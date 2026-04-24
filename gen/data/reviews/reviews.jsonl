@@ -201,3 +201,5 @@
 {"review_id": "2b323ee3-a46a-4dac-a3b1-83de28453c4d", "order_id": "45d141a2-5338-4cec-8357-46fe613e5ea5", "rating": 2, "comment": "Material de descarte vendido como produto premium. Vergonhoso.", "sentiment": "negative"}
 {"review_id": "25a52671-c1f0-4763-9fbb-73ee924fcebb", "order_id": "98a6aed1-4c39-4429-afbe-861bd71ac489", "rating": 1, "comment": "Entrega cancelada sem aviso, tive que recomprar e pagar frete de novo.", "sentiment": "negative"}
 {"review_id": "61f0f949-0fcb-4f60-b455-9a8f24bd8f66", "order_id": "41efd7c5-9b48-47cb-bdb5-03a103a9c835", "rating": 2, "comment": "Produto com mau cheiro e embalagem suja. Claramente foi devolvido e revendido.", "sentiment": "negative"}
+
+
