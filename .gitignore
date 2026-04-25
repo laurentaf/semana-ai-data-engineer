@@ -1,26 +1,59 @@
-# Environment and secrets
+# Environment files (secrets)
 .env
-*.env
-!.env.example
-!gen/license.env.example
+.env.local
+.env.*.local
+
+# ShadowTraffic license
+gen/license.env
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
-.venv/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
 venv/
+ENV/
+env/
+.venv/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Data (generated at runtime)
-*.jsonl
-!gen/data/reviews/reviews.jsonl
+# Logs
+*.log
+logs/
+
+# Docker volumes
+postgres_data/
+qdrant_data/
+
+# Node (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
