@@ -32,7 +32,7 @@ def ingest_reviews(
     collection_name: str | None = None,
 ) -> VectorStoreIndex:
     _configure_settings()
-    path = Path(jsonl_path) if jsonl_path else PROJECT_ROOT / "gen" / "data" / "reviews" / "reviews.jsonl"
+    path = Path(jsonl_path) if jsonl_path else PROJECT_ROOT / "gen" / "data" / "reviews" / "reviews_clean.jsonl"
     qdrant_url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
     collection_name = collection_name or os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 

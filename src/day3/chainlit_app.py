@@ -1,4 +1,4 @@
-"""ShopAgent Day 3 — Chainlit chat interface with LangChain agent streaming."""
+"""ShopAgent Day 3 -- Chainlit chat interface with LangChain agent streaming."""
 
 import sys
 from pathlib import Path
@@ -22,8 +22,8 @@ async def start():
         content=(
             "**ShopAgent conectado!**\n\n"
             "Sou seu analista de dados de e-commerce. Posso consultar:\n\n"
-            "- **The Ledger** (Postgres) — faturamento, pedidos, metricas\n"
-            "- **The Memory** (Qdrant) — opinoes, reclamacoes, sentimentos\n\n"
+            "- **The Ledger** (Postgres) -- faturamento, pedidos, metricas\n"
+            "- **The Memory** (Qdrant) -- opinoes, reclamacoes, sentimentos\n\n"
             "Como posso ajudar?"
         )
     ).send()

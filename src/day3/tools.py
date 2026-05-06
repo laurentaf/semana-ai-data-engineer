@@ -1,4 +1,4 @@
-"""ShopAgent Day 3 — LangChain tool definitions for The Ledger and The Memory."""
+"""ShopAgent Day 3 -- LangChain tool definitions for The Ledger and The Memory."""
 
 import os
 import sys
@@ -18,63 +18,63 @@ QUERIES = {
     "revenue_by_state": {
         "keywords": ["faturamento", "receita", "revenue", "estado", "state", "uf"],
         "sql": """
-            SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-            FROM orders o JOIN customers c ON o.customer_id = c.customer_id
-            GROUP BY c.state ORDER BY faturamento DESC
-        """,
+SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+GROUP BY c.state ORDER BY faturamento DESC
+""",
     },
     "orders_by_status": {
         "keywords": ["status", "pedidos", "entregue", "cancelado", "processando", "enviado"],
         "sql": """
-            SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
-                   ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
-            FROM orders GROUP BY status ORDER BY total DESC
-        """,
+SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
+ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM orders GROUP BY status ORDER BY total DESC
+""",
     },
     "top_products": {
         "keywords": ["produto", "product", "top", "mais vendido", "ranking"],
         "sql": """
-            SELECT p.name, p.category, p.brand,
-                   COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-            FROM orders o JOIN products p ON o.product_id = p.product_id
-            GROUP BY p.product_id, p.name, p.category, p.brand
-            ORDER BY faturamento DESC LIMIT 10
-        """,
+SELECT p.name, p.category, p.brand,
+COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+FROM orders o JOIN products p ON o.product_id = p.product_id
+GROUP BY p.product_id, p.name, p.category, p.brand
+ORDER BY faturamento DESC LIMIT 10
+""",
     },
     "payment_distribution": {
         "keywords": ["pagamento", "payment", "pix", "cartao", "boleto", "credit"],
         "sql": """
-            SELECT payment, COUNT(*) AS total,
-                   ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
-            FROM orders GROUP BY payment ORDER BY total DESC
-        """,
+SELECT payment, COUNT(*) AS total,
+ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
+FROM orders GROUP BY payment ORDER BY total DESC
+""",
     },
     "segment_analysis": {
         "keywords": ["segmento", "segment", "premium", "standard", "basic", "ticket medio"],
         "sql": """
-            SELECT c.segment, COUNT(DISTINCT c.customer_id) AS clientes,
-                   COUNT(o.order_id) AS pedidos, ROUND(AVG(o.total), 2) AS ticket_medio
-            FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id
-            GROUP BY c.segment ORDER BY ticket_medio DESC
-        """,
+SELECT c.segment, COUNT(DISTINCT c.customer_id) AS clientes,
+COUNT(o.order_id) AS pedidos, ROUND(AVG(o.total), 2) AS ticket_medio
+FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY c.segment ORDER BY ticket_medio DESC
+""",
     },
     "revenue_by_category": {
         "keywords": ["categoria", "category"],
         "sql": """
-            SELECT p.category, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-            FROM orders o JOIN products p ON o.product_id = p.product_id
-            GROUP BY p.category ORDER BY faturamento DESC
-        """,
+SELECT p.category, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+FROM orders o JOIN products p ON o.product_id = p.product_id
+GROUP BY p.category ORDER BY faturamento DESC
+""",
     },
     "premium_southeast_ticket": {
         "keywords": ["premium", "sudeste", "ticket"],
         "sql": """
-            SELECT c.segment, c.state, COUNT(o.order_id) AS pedidos,
-                   ROUND(AVG(o.total), 2) AS ticket_medio, SUM(o.total) AS faturamento
-            FROM customers c JOIN orders o ON c.customer_id = o.customer_id
-            WHERE c.segment = 'premium' AND c.state IN ('SP', 'RJ', 'MG', 'ES')
-            GROUP BY c.segment, c.state ORDER BY ticket_medio DESC
-        """,
+SELECT c.segment, c.state, COUNT(o.order_id) AS pedidos,
+ROUND(AVG(o.total), 2) AS ticket_medio, SUM(o.total) AS faturamento
+FROM customers c JOIN orders o ON c.customer_id = o.customer_id
+WHERE c.segment = 'premium' AND c.state IN ('SP', 'RJ', 'MG', 'ES')
+GROUP BY c.segment, c.state ORDER BY ticket_medio DESC
+""",
     },
 }
 
@@ -168,49 +168,46 @@ def qdrant_semantic_search(question: str) -> str:
         question: Natural language question for semantic similarity search in reviews.
     """
     try:
-        from day2.query_reviews import query_reviews
-    except ImportError:
         from llama_index.core import Settings, VectorStoreIndex
         from llama_index.embeddings.fastembed import FastEmbedEmbedding
-        from llama_index.llms.anthropic import Anthropic
         from llama_index.vector_stores.qdrant import QdrantVectorStore
         import qdrant_client
 
-        Settings.llm = Anthropic(model="claude-sonnet-4-20250514")
         Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
         qdrant_url = os.environ.get("QDRANT_URL", "http://localhost:6333")
         collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
-        client = qdrant_client.QdrantClient(url=qdrant_url)
+        client = qdrant_client.QdrantClient(url=qdrant_url, check_compatibility=False)
         vector_store = QdrantVectorStore(client=client, collection_name=collection_name)
         index = VectorStoreIndex.from_vector_store(vector_store)
-        engine = index.as_query_engine(similarity_top_k=5)
-        response = engine.query(question)
+
+        retriever = index.as_retriever(similarity_top_k=5)
+        nodes = retriever.retrieve(question)
+
+        if not nodes:
+            return "Nenhum review relevante encontrado."
 
         snippets = []
-        for node in response.source_nodes:
-            snippets.append(f"  [{node.score:.3f}] {node.text[:150]}...")
+        for node in nodes:
+            score = node.score if node.score is not None else 0.0
+            snippets.append(f"[score: {score:.3f}] {node.text[:200]}")
 
-        return f"Resposta: {response.response}\n\nFontes ({len(response.source_nodes)} chunks):\n" + "\n".join(snippets)
+        return f"Reviews encontrados ({len(nodes)} resultados):\n\n" + "\n\n".join(snippets)
 
-    response = query_reviews(question)
-    snippets = []
-    for node in response.source_nodes:
-        snippets.append(f"  [{node.score:.3f}] {node.text[:150]}...")
-
-    return f"Resposta: {response.response}\n\nFontes ({len(response.source_nodes)} chunks):\n" + "\n".join(snippets)
+    except Exception as exc:
+        return f"Erro ao buscar no Qdrant: {exc}"
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  TOOL TEST: supabase_execute_sql")
+    print(" TOOL TEST: supabase_execute_sql")
     print("=" * 60)
     result = supabase_execute_sql.invoke("Qual o faturamento total por estado?")
     print(result)
 
     print("\n" + "=" * 60)
-    print("  TOOL TEST: qdrant_semantic_search")
+    print(" TOOL TEST: qdrant_semantic_search")
     print("=" * 60)
     result = qdrant_semantic_search.invoke("Clientes reclamando de entrega atrasada")
     print(result)
