@@ -35,7 +35,7 @@ def query_reviews(
     qdrant_url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
     collection_name = collection_name or os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
-    client = qdrant_client.QdrantClient(url=qdrant_url)
+    client = qdrant_client.QdrantClient(url=qdrant_url, check_compatibility=False)
     vector_store = QdrantVectorStore(client=client, collection_name=collection_name)
 
     index = VectorStoreIndex.from_vector_store(vector_store)

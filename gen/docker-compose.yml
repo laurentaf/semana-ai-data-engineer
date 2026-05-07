@@ -37,7 +37,7 @@ services:
     image: shadowtraffic/shadowtraffic:latest
     env_file:
       - ../.env
-      - license.env
+      - ../license.env
     volumes:
       - ./shadowtraffic.json:/home/config.json
       - ./data/reviews:/data/reviews

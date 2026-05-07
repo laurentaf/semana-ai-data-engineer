@@ -32,7 +32,7 @@ def ingest_reviews(
     collection_name: str | None = None,
 ) -> VectorStoreIndex:
     _configure_settings()
-    path = Path(jsonl_path) if jsonl_path else PROJECT_ROOT / "gen" / "data" / "reviews" / "reviews_clean.jsonl"
+    path = Path(jsonl_path) if jsonl_path else PROJECT_ROOT / "gen" / "data" / "reviews" / "reviews.jsonl"
     qdrant_url = qdrant_url or os.environ.get("QDRANT_URL", "http://localhost:6333")
     collection_name = collection_name or os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
@@ -43,7 +43,7 @@ def ingest_reviews(
     documents = reader.load_data(input_file=str(path))
     print(f"Loaded {len(documents)} reviews from {path.name}")
 
-    client = qdrant_client.QdrantClient(url=qdrant_url)
+    client = qdrant_client.QdrantClient(url=qdrant_url, check_compatibility=False)
     vector_store = QdrantVectorStore(client=client, collection_name=collection_name)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 

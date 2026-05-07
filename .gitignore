@@ -3,6 +3,12 @@
 .env.local
 .env.*.local
 
+# MCP server config (contains connection strings)
+.mcp.json
+
+# ShadowTraffic generated review fragments
+gen/data/reviews/reviews[0-9]*.jsonl
+
 # ShadowTraffic license
 gen/license.env
 
