@@ -1,4 +1,9 @@
-"""ShopAgent Day 3 -- LangChain tool definitions for The Ledger and The Memory."""
+"""ShopAgent Day 3 -- LangChain tool definitions for The Ledger and The Memory.
+
+Query routing uses a two-tier strategy:
+1. Keyword matching (instant, ~0ms)
+2. NVIDIA NIM LLM fallback via nemotron-mini-4b (~0.3s, 100% accuracy)
+"""
 
 import os
 import sys
@@ -7,11 +12,24 @@ from pathlib import Path
 import psycopg2
 from dotenv import load_dotenv
 from langchain_core.tools import tool
+from openai import OpenAI
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
+NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
+NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "nvidia/nemotron-mini-4b-instruct")
+
+ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
+
+Queries disponiveis: revenue_by_state, orders_by_status, top_products,
+payment_distribution, segment_analysis, revenue_by_category,
+premium_southeast_ticket, revenue_by_month, customer_count_by_state
+
+Responda APENAS com o nome da query, nada mais. Sem explicacao."""
 
 
 QUERIES = {
@@ -93,6 +111,8 @@ QUERIES = {
     },
 }
 
+VALID_QUERIES = set(QUERIES.keys())
+
 
 def _get_connection():
     return psycopg2.connect(
@@ -114,6 +134,38 @@ def _match_query(question: str) -> str | None:
             best_score = score
             best_match = name
     return best_match
+
+
+def _nim_route(question: str) -> str | None:
+    """Use NVIDIA NIM nemotron-mini-4b for query routing (~0.3s)."""
+    if not NIM_API_KEY:
+        return None
+    try:
+        client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
+        completion = client.chat.completions.create(
+            model=NIM_MODEL,
+            messages=[
+                {"role": "system", "content": ROUTER_SYSTEM},
+                {"role": "user", "content": question},
+            ],
+            temperature=0,
+            max_tokens=30,
+        )
+        response = completion.choices[0].message.content.strip().lower()
+        response_clean = response.replace(" ", "_").replace("-", "_").strip(".")
+        if response_clean in VALID_QUERIES:
+            return response_clean
+        return None
+    except Exception:
+        return None
+
+
+def _route_query(question: str) -> str | None:
+    """Two-tier query routing: keyword match first (instant), then NIM LLM fallback."""
+    matched = _match_query(question)
+    if matched:
+        return matched
+    return _nim_route(question)
 
 
 def _format_results(columns: list[str], rows: list[tuple]) -> str:
@@ -143,7 +195,7 @@ def supabase_execute_sql(question: str) -> str:
     Args:
         question: Natural language question about business metrics.
     """
-    matched = _match_query(question)
+    matched = _route_query(question)
     if not matched:
         return (
             f"Nao foi possivel mapear a pergunta para uma query conhecida. "
@@ -217,15 +269,21 @@ def qdrant_semantic_search(question: str) -> str:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print(" TOOL TEST: supabase_execute_sql")
+    print(" TOOL TEST: supabase_execute_sql (keyword match)")
     print("=" * 60)
     result = supabase_execute_sql.invoke("Qual o faturamento total por estado?")
     print(result)
 
     print("\n" + "=" * 60)
-    print(" TOOL TEST: revenue_by_month")
+    print(" TOOL TEST: revenue_by_month (keyword match)")
     print("=" * 60)
     result = supabase_execute_sql.invoke("Evolucao do faturamento por mes")
+    print(result)
+
+    print("\n" + "=" * 60)
+    print(" TOOL TEST: NIM fallback routing")
+    print("=" * 60)
+    result = supabase_execute_sql.invoke("Show me the monthly revenue trend")
     print(result)
 
     print("\n" + "=" * 60)

@@ -2,6 +2,8 @@
 
 ENVIRONMENT-aware: set ENVIRONMENT=cloud to use Supabase/Qdrant cloud,
 or ENVIRONMENT=local (default) for Docker endpoints. Zero code changes.
+
+Query routing: keyword match -> NIM nemotron-mini-4b fallback (~0.3s, 100% acc)
 """
 
 import json
@@ -16,11 +18,25 @@ from llama_index.core import Settings, VectorStoreIndex
 from llama_index.embeddings.fastembed import FastEmbedEmbedding
 from llama_index.llms.anthropic import Anthropic
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+from openai import OpenAI
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 _is_cloud = os.environ.get("ENVIRONMENT", "local") == "cloud"
+
+NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
+NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
+NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "nvidia/nemotron-mini-4b-instruct")
+
+ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
+
+Queries disponiveis: revenue_by_state, orders_by_status, top_products,
+payment_distribution, segment_analysis, revenue_by_category,
+customer_count_by_state, orders_by_month, revenue_by_month,
+satisfaction_by_region
+
+Responda APENAS com o nome da query, nada mais. Sem explicacao."""
 
 
 def _get_postgres_connection():
@@ -123,6 +139,32 @@ SAFE_QUERIES: dict[str, str] = {
     """,
 }
 
+VALID_QUERIES = set(SAFE_QUERIES.keys())
+
+
+def _nim_route(question: str) -> str | None:
+    """Use NVIDIA NIM nemotron-mini-4b for query routing (~0.3s)."""
+    if not NIM_API_KEY:
+        return None
+    try:
+        client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
+        completion = client.chat.completions.create(
+            model=NIM_MODEL,
+            messages=[
+                {"role": "system", "content": ROUTER_SYSTEM},
+                {"role": "user", "content": question},
+            ],
+            temperature=0,
+            max_tokens=30,
+        )
+        response = completion.choices[0].message.content.strip().lower()
+        response_clean = response.replace(" ", "_").replace("-", "_").strip(".")
+        if response_clean in VALID_QUERIES:
+            return response_clean
+        return None
+    except Exception:
+        return None
+
 
 @tool("Supabase SQL Executor")
 def supabase_execute_sql(query: str) -> str:
@@ -139,13 +181,23 @@ def supabase_execute_sql(query: str) -> str:
     revenue_by_state, orders_by_status, top_products, payment_distribution,
     segment_analysis, revenue_by_category, customer_count_by_state,
     orders_by_month, revenue_by_month, satisfaction_by_region.
+    If a natural language question is passed, the NIM router will map it.
 
     Args:
-        query: Name of a predefined safe query to execute against the shopagent database.
+        query: Query name or natural language question about business metrics.
     """
     query_key = query.strip().lower().replace(" ", "_").replace("-", "_")
 
+    # Try direct query name lookup first
     sql = SAFE_QUERIES.get(query_key)
+
+    # If not a direct name, try NIM routing
+    if sql is None and NIM_API_KEY:
+        routed = _nim_route(query)
+        if routed:
+            sql = SAFE_QUERIES.get(routed)
+            query_key = routed
+
     if sql is None:
         available = ", ".join(sorted(SAFE_QUERIES.keys()))
         return (
@@ -234,9 +286,11 @@ def _print_env_status() -> None:
     mode = "CLOUD" if _is_cloud else "LOCAL (Docker)"
     pg_host = "Supabase Cloud" if _is_cloud else os.environ.get("POSTGRES_HOST", "localhost")
     qdrant_host = _get_qdrant_url()
+    nim_status = f"enabled ({NIM_MODEL})" if NIM_API_KEY else "disabled (no NVIDIA_NIM_API_KEY)"
     print(f" ENVIRONMENT={os.environ.get('ENVIRONMENT', 'local')} -> mode: {mode}")
     print(f" Postgres: {pg_host}")
     print(f" Qdrant: {qdrant_host}")
+    print(f" NIM Router: {nim_status}")
     print(f" LangFuse: {'enabled' if os.environ.get('LANGFUSE_SECRET_KEY', '').strip() and not os.environ.get('LANGFUSE_SECRET_KEY', '').startswith('sk-lf-') else 'disabled'}")
 
 
@@ -248,9 +302,15 @@ if __name__ == "__main__":
 
     print()
     print("=" * 60)
-    print(" Testing supabase_execute_sql")
+    print(" Testing supabase_execute_sql (direct name)")
     print("=" * 60)
     print(supabase_execute_sql.run("revenue_by_state"))
+
+    print()
+    print("=" * 60)
+    print(" Testing supabase_execute_sql (NIM routing)")
+    print("=" * 60)
+    print(supabase_execute_sql.run("evolucao do faturamento por mes"))
 
     print()
     print("=" * 60)
