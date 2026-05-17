@@ -1,14 +1,20 @@
-# Welcome to Chainlit! 🚀🤖
+# ShopAgent — Analista de E-commerce com IA
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+Bem-vindo ao **ShopAgent**! Sou seu analista de dados de e-commerce com IA.
 
-## Useful Links 🔗
+## O que posso fazer?
 
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
+- **The Ledger** (Postgres) — Faturamento, pedidos, metricas, numeros exatos
+- **The Memory** (Qdrant) — Opinioes, reclamacoes, sentimentos dos clientes
+- **Crew de 3 Agentes** (Day 4) — Analista + Pesquisador + Reporter
 
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
+## Exemplos de perguntas
 
-## Welcome screen
+- "Qual o faturamento total por estado?"
+- "Evolucao do faturamento por mes"
+- "Clientes reclamando de entrega atrasada"
+- "Analise completa de satisfacao por regiao"
 
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+## Modo atual
+
+O ambiente (local Docker ou cloud) e configurado automaticamente via `.env`.
