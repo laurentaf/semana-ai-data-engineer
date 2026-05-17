@@ -12,7 +12,8 @@ from pathlib import Path
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from dotenv import load_dotenv
-from langfuse import observe
+from langfuse import Langfuse
+from langfuse.decorators import observe
 
 from tools import supabase_execute_sql, qdrant_semantic_search
 
@@ -20,6 +21,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 LLM_MODEL = os.environ.get("CREWAI_LLM", "anthropic/claude-sonnet-4-20250514")
+
+_lf: Langfuse | None = None
+
+
+def _get_langfuse() -> Langfuse | None:
+    global _lf
+    if _lf is not None:
+        return _lf
+    secret = os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
+    public = os.environ.get("LANGFUSE_PUBLIC_KEY", "").strip()
+    host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").strip()
+    if secret and public and not secret.startswith("sk-lf-"):
+        _lf = Langfuse(
+            public_key=public,
+            secret_key=secret,
+            host=host,
+        )
+        return _lf
+    return None
 
 
 @CrewBase
@@ -146,13 +166,22 @@ class ShopAgentCrew:
 
     @crew
     def crew(self) -> Crew:
-        """Assemble the ShopAgent crew."""
+        """Assemble the ShopAgent crew with optional LangFuse tracing."""
+        lf = _get_langfuse()
+        callbacks = []
+        if lf:
+            handlers = lf.get_callback_handlers(
+                metadata={"crew": "shopagent-v4", "environment": os.environ.get("ENVIRONMENT", "local")}
+            )
+            callbacks = handlers if isinstance(handlers, list) else [handlers]
+
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
             memory=True,
             verbose=True,
+            callback=callbacks if callbacks else None,
         )
 
 

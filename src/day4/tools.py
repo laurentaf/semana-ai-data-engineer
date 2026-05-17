@@ -1,4 +1,8 @@
-"""ShopAgent Day 4 — CrewAI tool wrappers for The Ledger and The Memory."""
+"""ShopAgent Day 4 — CrewAI tool wrappers for The Ledger and The Memory.
+
+ENVIRONMENT-aware: set ENVIRONMENT=cloud to use Supabase/Qdrant cloud,
+or ENVIRONMENT=local (default) for Docker endpoints. Zero code changes.
+"""
 
 import json
 import os
@@ -16,62 +20,16 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
-SAFE_QUERIES: dict[str, str] = {
-    "revenue_by_state": """
-        SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-        FROM orders o JOIN customers c ON o.customer_id = c.customer_id
-        GROUP BY c.state ORDER BY faturamento DESC
-    """,
-    "orders_by_status": """
-        SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
-               ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
-        FROM orders GROUP BY status ORDER BY total DESC
-    """,
-    "top_products": """
-        SELECT p.name, p.category, p.brand,
-               COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-        FROM orders o JOIN products p ON o.product_id = p.product_id
-        GROUP BY p.product_id, p.name, p.category, p.brand
-        ORDER BY faturamento DESC LIMIT 10
-    """,
-    "payment_distribution": """
-        SELECT payment, COUNT(*) AS total,
-               ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
-        FROM orders GROUP BY payment ORDER BY total DESC
-    """,
-    "segment_analysis": """
-        SELECT c.segment, COUNT(DISTINCT c.customer_id) AS clientes,
-               COUNT(o.order_id) AS pedidos, ROUND(AVG(o.total), 2) AS ticket_medio
-        FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id
-        GROUP BY c.segment ORDER BY ticket_medio DESC
-    """,
-    "revenue_by_category": """
-        SELECT p.category, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento,
-               ROUND(AVG(o.total), 2) AS ticket_medio
-        FROM orders o JOIN products p ON o.product_id = p.product_id
-        GROUP BY p.category ORDER BY faturamento DESC
-    """,
-    "customer_count_by_state": """
-        SELECT state, COUNT(*) AS clientes
-        FROM customers GROUP BY state ORDER BY clientes DESC
-    """,
-    "orders_by_month": """
-        SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
-               SUM(total) AS faturamento
-        FROM orders GROUP BY mes ORDER BY mes DESC LIMIT 12
-    """,
-    "satisfaction_by_region": """
-        SELECT c.state, c.segment, COUNT(o.order_id) AS pedidos,
-               SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
-        FROM orders o JOIN customers c ON o.customer_id = c.customer_id
-        GROUP BY c.state, c.segment ORDER BY c.state, faturamento DESC
-    """,
-}
+_is_cloud = os.environ.get("ENVIRONMENT", "local") == "cloud"
 
 
 def _get_postgres_connection():
+    if _is_cloud:
+        db_url = os.environ.get("SUPABASE_DB_URL")
+        if db_url:
+            return psycopg2.connect(db_url)
     supabase_url = os.environ.get("SUPABASE_URL")
-    if supabase_url:
+    if supabase_url and not supabase_url.startswith("https://xxxxx"):
         return psycopg2.connect(supabase_url)
     return psycopg2.connect(
         host=os.environ.get("POSTGRES_HOST", "localhost"),
@@ -80,6 +38,20 @@ def _get_postgres_connection():
         user=os.environ.get("POSTGRES_USER", "shopagent"),
         password=os.environ.get("POSTGRES_PASSWORD", "shopagent"),
     )
+
+
+def _get_qdrant_url() -> str:
+    if _is_cloud:
+        cloud_url = os.environ.get("QDRANT_CLOUD_URL", "")
+        if cloud_url and not cloud_url.startswith("https://xxxxx"):
+            return cloud_url
+    return os.environ.get("QDRANT_URL", "http://localhost:6333")
+
+
+def _get_qdrant_api_key() -> str | None:
+    if _is_cloud:
+        return os.environ.get("QDRANT_CLOUD_API_KEY")
+    return None
 
 
 _llama_settings_initialized = False
@@ -94,15 +66,57 @@ def _configure_llama_settings() -> None:
     _llama_settings_initialized = True
 
 
-def _get_qdrant_url() -> str:
-    return os.environ.get(
-        "QDRANT_CLOUD_URL",
-        os.environ.get("QDRANT_URL", "http://localhost:6333"),
-    )
-
-
-def _get_qdrant_api_key() -> str | None:
-    return os.environ.get("QDRANT_CLOUD_API_KEY")
+SAFE_QUERIES: dict[str, str] = {
+    "revenue_by_state": """
+        SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+        FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+        GROUP BY c.state ORDER BY faturamento DESC
+    """,
+    "orders_by_status": """
+        SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
+        ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
+        FROM orders GROUP BY status ORDER BY total DESC
+    """,
+    "top_products": """
+        SELECT p.name, p.category, p.brand,
+        COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+        FROM orders o JOIN products p ON o.product_id = p.product_id
+        GROUP BY p.product_id, p.name, p.category, p.brand
+        ORDER BY faturamento DESC LIMIT 10
+    """,
+    "payment_distribution": """
+        SELECT payment, COUNT(*) AS total,
+        ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
+        FROM orders GROUP BY payment ORDER BY total DESC
+    """,
+    "segment_analysis": """
+        SELECT c.segment, COUNT(DISTINCT c.customer_id) AS clientes,
+        COUNT(o.order_id) AS pedidos, ROUND(AVG(o.total), 2) AS ticket_medio
+        FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id
+        GROUP BY c.segment ORDER BY ticket_medio DESC
+    """,
+    "revenue_by_category": """
+        SELECT p.category, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento,
+        ROUND(AVG(o.total), 2) AS ticket_medio
+        FROM orders o JOIN products p ON o.product_id = p.product_id
+        GROUP BY p.category ORDER BY faturamento DESC
+    """,
+    "customer_count_by_state": """
+        SELECT state, COUNT(*) AS clientes
+        FROM customers GROUP BY state ORDER BY clientes DESC
+    """,
+    "orders_by_month": """
+        SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
+        SUM(total) AS faturamento
+        FROM orders GROUP BY mes ORDER BY mes DESC LIMIT 12
+    """,
+    "satisfaction_by_region": """
+        SELECT c.state, c.segment, COUNT(o.order_id) AS pedidos,
+        SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
+        FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+        GROUP BY c.state, c.segment ORDER BY c.state, faturamento DESC
+    """,
+}
 
 
 @tool("Supabase SQL Executor")
@@ -145,17 +159,17 @@ def supabase_execute_sql(query: str) -> str:
             columns = [desc[0] for desc in cur.description]
             rows = cur.fetchall()
 
-        results = []
-        for row in rows:
-            record = {}
-            for col, val in zip(columns, row):
-                if hasattr(val, "__float__"):
-                    record[col] = float(val)
-                else:
-                    record[col] = str(val) if val is not None else None
-            results.append(record)
+            results = []
+            for row in rows:
+                record = {}
+                for col, val in zip(columns, row):
+                    if hasattr(val, "__float__"):
+                        record[col] = float(val)
+                    else:
+                        record[col] = str(val) if val is not None else None
+                results.append(record)
 
-        return json.dumps(results, ensure_ascii=False, indent=2)
+            return json.dumps(results, ensure_ascii=False, indent=2)
     except psycopg2.Error as exc:
         return f"Query execution failed: {exc}"
     finally:
@@ -210,14 +224,30 @@ def qdrant_semantic_search(question: str) -> str:
         return f"Qdrant search failed: {exc}"
 
 
+def _print_env_status() -> None:
+    mode = "CLOUD" if _is_cloud else "LOCAL (Docker)"
+    pg_host = "Supabase Cloud" if _is_cloud else os.environ.get("POSTGRES_HOST", "localhost")
+    qdrant_host = _get_qdrant_url()
+    print(f" ENVIRONMENT={os.environ.get('ENVIRONMENT', 'local')} -> mode: {mode}")
+    print(f" Postgres: {pg_host}")
+    print(f" Qdrant: {qdrant_host}")
+    print(f" LangFuse: {'enabled' if os.environ.get('LANGFUSE_SECRET_KEY', '').strip() and not os.environ.get('LANGFUSE_SECRET_KEY', '').startswith('sk-lf-') else 'disabled'}")
+
+
 if __name__ == "__main__":
     print("=" * 60)
-    print("  Testing supabase_execute_sql")
+    print(" ShopAgent Day 4 Tools — Environment Status")
+    print("=" * 60)
+    _print_env_status()
+
+    print()
+    print("=" * 60)
+    print(" Testing supabase_execute_sql")
     print("=" * 60)
     print(supabase_execute_sql.run("revenue_by_state"))
 
     print()
     print("=" * 60)
-    print("  Testing qdrant_semantic_search")
+    print(" Testing qdrant_semantic_search")
     print("=" * 60)
     print(qdrant_semantic_search.run("Clientes reclamando de entrega atrasada"))

@@ -10,6 +10,7 @@
 gen/data/reviews/reviews[0-9]*.jsonl
 
 # ShadowTraffic license
+license.env
 gen/license.env
 
 # Python
@@ -63,3 +64,6 @@ qdrant_data/
 node_modules/
 npm-debug.log
 yarn-error.log
+
+# Claude Code local project state
+.claude/projects/
