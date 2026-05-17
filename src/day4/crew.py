@@ -59,7 +59,7 @@ class ShopAgentCrew:
                 "numbers -- every figure comes from a SQL query result. "
                 "Available queries: revenue_by_state, orders_by_status, top_products, "
                 "payment_distribution, segment_analysis, revenue_by_category, "
-                "customer_count_by_state, orders_by_month, satisfaction_by_region."
+                "customer_count_by_state, orders_by_month, revenue_by_month, satisfaction_by_region. For monthly revenue trends or evolucao temporal, use revenue_by_month."
             ),
             tools=[supabase_execute_sql],
             llm=LLM_MODEL,

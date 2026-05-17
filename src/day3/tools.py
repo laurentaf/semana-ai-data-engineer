@@ -18,63 +18,78 @@ QUERIES = {
     "revenue_by_state": {
         "keywords": ["faturamento", "receita", "revenue", "estado", "state", "uf"],
         "sql": """
-SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-FROM orders o JOIN customers c ON o.customer_id = c.customer_id
-GROUP BY c.state ORDER BY faturamento DESC
-""",
+            SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+            FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+            GROUP BY c.state ORDER BY faturamento DESC
+        """,
     },
     "orders_by_status": {
         "keywords": ["status", "pedidos", "entregue", "cancelado", "processando", "enviado"],
         "sql": """
-SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
-ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
-FROM orders GROUP BY status ORDER BY total DESC
-""",
+            SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
+            ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
+            FROM orders GROUP BY status ORDER BY total DESC
+        """,
     },
     "top_products": {
         "keywords": ["produto", "product", "top", "mais vendido", "ranking"],
         "sql": """
-SELECT p.name, p.category, p.brand,
-COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-FROM orders o JOIN products p ON o.product_id = p.product_id
-GROUP BY p.product_id, p.name, p.category, p.brand
-ORDER BY faturamento DESC LIMIT 10
-""",
+            SELECT p.name, p.category, p.brand,
+            COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+            FROM orders o JOIN products p ON o.product_id = p.product_id
+            GROUP BY p.product_id, p.name, p.category, p.brand
+            ORDER BY faturamento DESC LIMIT 10
+        """,
     },
     "payment_distribution": {
         "keywords": ["pagamento", "payment", "pix", "cartao", "boleto", "credit"],
         "sql": """
-SELECT payment, COUNT(*) AS total,
-ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
-FROM orders GROUP BY payment ORDER BY total DESC
-""",
+            SELECT payment, COUNT(*) AS total,
+            ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
+            FROM orders GROUP BY payment ORDER BY total DESC
+        """,
     },
     "segment_analysis": {
         "keywords": ["segmento", "segment", "premium", "standard", "basic", "ticket medio"],
         "sql": """
-SELECT c.segment, COUNT(DISTINCT c.customer_id) AS clientes,
-COUNT(o.order_id) AS pedidos, ROUND(AVG(o.total), 2) AS ticket_medio
-FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id
-GROUP BY c.segment ORDER BY ticket_medio DESC
-""",
+            SELECT c.segment, COUNT(DISTINCT c.customer_id) AS clientes,
+            COUNT(o.order_id) AS pedidos, ROUND(AVG(o.total), 2) AS ticket_medio
+            FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id
+            GROUP BY c.segment ORDER BY ticket_medio DESC
+        """,
     },
     "revenue_by_category": {
         "keywords": ["categoria", "category"],
         "sql": """
-SELECT p.category, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
-FROM orders o JOIN products p ON o.product_id = p.product_id
-GROUP BY p.category ORDER BY faturamento DESC
-""",
+            SELECT p.category, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
+            FROM orders o JOIN products p ON o.product_id = p.product_id
+            GROUP BY p.category ORDER BY faturamento DESC
+        """,
     },
     "premium_southeast_ticket": {
         "keywords": ["premium", "sudeste", "ticket"],
         "sql": """
-SELECT c.segment, c.state, COUNT(o.order_id) AS pedidos,
-ROUND(AVG(o.total), 2) AS ticket_medio, SUM(o.total) AS faturamento
-FROM customers c JOIN orders o ON c.customer_id = o.customer_id
-WHERE c.segment = 'premium' AND c.state IN ('SP', 'RJ', 'MG', 'ES')
-GROUP BY c.segment, c.state ORDER BY ticket_medio DESC
-""",
+            SELECT c.segment, c.state, COUNT(o.order_id) AS pedidos,
+            ROUND(AVG(o.total), 2) AS ticket_medio, SUM(o.total) AS faturamento
+            FROM customers c JOIN orders o ON c.customer_id = o.customer_id
+            WHERE c.segment = 'premium' AND c.state IN ('SP', 'RJ', 'MG', 'ES')
+            GROUP BY c.segment, c.state ORDER BY ticket_medio DESC
+        """,
+    },
+    "revenue_by_month": {
+        "keywords": ["mes", "month", "evolucao", "temporal", "faturamento mes", "receita mes", "timeline", "periodo", "trimestre"],
+        "sql": """
+            SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
+            SUM(total) AS faturamento, ROUND(AVG(total), 2) AS ticket_medio
+            FROM orders GROUP BY mes ORDER BY mes ASC LIMIT 12
+        """,
+    },
+    "customer_count_by_state": {
+        "keywords": ["quantos clientes", "cliente por estado", "clientes"],
+        "sql": """
+            SELECT state, COUNT(*) AS clientes
+            FROM customers GROUP BY state ORDER BY clientes DESC
+        """,
     },
 }
 
@@ -118,6 +133,7 @@ def supabase_execute_sql(question: str) -> str:
 
     Use when the question asks for specific numbers, totals, or structured data:
     - Faturamento (revenue) by state, category, or period
+    - Evolucao do faturamento por mes (revenue timeline)
     - Total de pedidos (order counts), ticket medio (average order value)
     - Payment method distribution (pix, credit_card, boleto)
     - Customer segment analysis (premium, standard, basic)
@@ -204,6 +220,12 @@ if __name__ == "__main__":
     print(" TOOL TEST: supabase_execute_sql")
     print("=" * 60)
     result = supabase_execute_sql.invoke("Qual o faturamento total por estado?")
+    print(result)
+
+    print("\n" + "=" * 60)
+    print(" TOOL TEST: revenue_by_month")
+    print("=" * 60)
+    result = supabase_execute_sql.invoke("Evolucao do faturamento por mes")
     print(result)
 
     print("\n" + "=" * 60)

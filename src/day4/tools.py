@@ -107,8 +107,13 @@ SAFE_QUERIES: dict[str, str] = {
     """,
     "orders_by_month": """
         SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
-        SUM(total) AS faturamento
+        SUM(total) AS faturamento, ROUND(AVG(total), 2) AS ticket_medio
         FROM orders GROUP BY mes ORDER BY mes DESC LIMIT 12
+    """,
+    "revenue_by_month": """
+        SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
+        SUM(total) AS faturamento, ROUND(AVG(total), 2) AS ticket_medio
+        FROM orders GROUP BY mes ORDER BY mes ASC LIMIT 12
     """,
     "satisfaction_by_region": """
         SELECT c.state, c.segment, COUNT(o.order_id) AS pedidos,
@@ -125,6 +130,7 @@ def supabase_execute_sql(query: str) -> str:
 
     Use when the question asks for specific numbers, totals, or structured data:
     - Faturamento (revenue) by state, category, or period
+    - Evolucao do faturamento por mes (revenue timeline / monthly trend)
     - Total de pedidos (order counts), ticket medio (average order value)
     - Payment method distribution, customer segment analysis
     - Any question requiring aggregation, GROUP BY, or JOINs
@@ -132,7 +138,7 @@ def supabase_execute_sql(query: str) -> str:
     The query parameter must be one of the predefined safe query names:
     revenue_by_state, orders_by_status, top_products, payment_distribution,
     segment_analysis, revenue_by_category, customer_count_by_state,
-    orders_by_month, satisfaction_by_region.
+    orders_by_month, revenue_by_month, satisfaction_by_region.
 
     Args:
         query: Name of a predefined safe query to execute against the shopagent database.
