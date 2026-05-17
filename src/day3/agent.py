@@ -1,4 +1,7 @@
-"""ShopAgent Day 3 -- LangChain ReAct agent with autonomous dual-store routing."""
+"""ShopAgent Day 3 -- LangChain ReAct agent with autonomous dual-store routing.
+
+Langfuse tracing via LangChain CallbackHandler (framework integration).
+"""
 
 import os
 import sys
@@ -8,8 +11,24 @@ from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langgraph.prebuilt import create_react_agent
 
+# env vars MUST be loaded before langfuse import
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
+
+# langfuse init after dotenv (per best practice)
+_langfuse_enabled = bool(
+    os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
+    and not os.environ.get("LANGFUSE_SECRET_KEY", "").startswith("sk-lf-your")
+)
+
+if _langfuse_enabled:
+    from langfuse import get_client
+    from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
+    _langfuse_client = get_client()
+    _langfuse_handler = LangfuseCallbackHandler()
+else:
+    _langfuse_client = None
+    _langfuse_handler = None
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -58,6 +77,28 @@ def create_shopagent() -> object:
     return agent
 
 
+def get_langfuse_config(session_id: str | None = None, user_id: str | None = None) -> dict:
+    """Build LangChain config dict with Langfuse callback + session/user context."""
+    config = {}
+    callbacks = []
+    if _langfuse_handler:
+        callbacks.append(_langfuse_handler)
+
+    metadata = {}
+    if session_id:
+        metadata["langfuse_session_id"] = session_id
+    if user_id:
+        metadata["langfuse_user_id"] = user_id
+    metadata["langfuse_tags"] = ["shopagent-day3", os.environ.get("ENVIRONMENT", "local")]
+
+    if callbacks:
+        config["callbacks"] = callbacks
+    if metadata:
+        config["metadata"] = metadata
+
+    return config
+
+
 def _extract_text(content) -> str:
     if isinstance(content, str):
         return content
@@ -72,11 +113,18 @@ def _extract_text(content) -> str:
     return str(content)
 
 
-def run_agent(question: str) -> str:
+def run_agent(question: str, session_id: str | None = None, user_id: str | None = None) -> str:
     agent = create_shopagent()
-    result = agent.invoke({
-        "messages": [{"role": "user", "content": question}]
-    })
+    config = get_langfuse_config(session_id=session_id, user_id=user_id)
+
+    result = agent.invoke(
+        {"messages": [{"role": "user", "content": question}]},
+        config=config or None,
+    )
+
+    if _langfuse_client:
+        _langfuse_client.flush()
+
     return _extract_text(result["messages"][-1].content)
 
 
@@ -94,5 +142,5 @@ if __name__ == "__main__":
         print(f"\n{'='*60}")
         print(f" Q: {question}")
         print(f"{'='*60}")
-        answer = run_agent(question)
+        answer = run_agent(question, session_id="demo-session", user_id="cli-user")
         print(f"\n A: {answer}")

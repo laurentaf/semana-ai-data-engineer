@@ -1,4 +1,7 @@
-"""ShopAgent Day 3 -- Chainlit chat interface with LangChain agent streaming."""
+"""ShopAgent Day 3 -- Chainlit chat interface with LangChain agent streaming.
+
+Langfuse tracing via LangChain CallbackHandler (per-session grouping).
+"""
 
 import sys
 from pathlib import Path
@@ -11,7 +14,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from day3.agent import create_shopagent
+from day3.agent import create_shopagent, get_langfuse_config
 
 
 @cl.on_chat_start
@@ -35,9 +38,15 @@ async def main(message: cl.Message):
     msg = cl.Message(content="")
     current_step = None
 
+    # Langfuse session tracking (groups all messages in one conversation)
+    session_id = cl.context.session.id
+    user_id = getattr(cl.context.session, "user_id", None) or "anonymous"
+    config = get_langfuse_config(session_id=session_id, user_id=user_id)
+
     async for event in agent.astream_events(
         {"messages": [{"role": "user", "content": message.content}]},
         version="v2",
+        config=config or None,
     ):
         kind = event["event"]
 

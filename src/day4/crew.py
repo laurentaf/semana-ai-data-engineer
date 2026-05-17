@@ -1,9 +1,13 @@
 """ShopAgent Day 4 — CrewAI crew with 3 specialized agents.
 
 Architecture:
-    AnalystAgent  (The Ledger)  -> SQL metrics from Supabase/Postgres
-    ResearchAgent (The Memory)  -> Semantic insights from Qdrant
-    ReporterAgent (Synthesis)   -> Executive report combining both
+  AnalystAgent (The Ledger) -> SQL metrics from Supabase/Postgres
+  ResearchAgent (The Memory) -> Semantic insights from Qdrant
+  ReporterAgent (Synthesis) -> Executive report combining both
+
+Langfuse tracing via:
+  - openinference CrewAIInstrumentor (auto-instruments crew execution)
+  - @observe decorator (adds session_id, user_id, tags)
 """
 
 import os
@@ -12,34 +16,31 @@ from pathlib import Path
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from dotenv import load_dotenv
-from langfuse import Langfuse
-from langfuse.decorators import observe
 
-from tools import supabase_execute_sql, qdrant_semantic_search
-
+# env vars MUST be loaded before langfuse import (per best practice)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
+# langfuse init after dotenv
+_langfuse_enabled = bool(
+    os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
+    and not os.environ.get("LANGFUSE_SECRET_KEY", "").startswith("sk-lf-your")
+)
+
+if _langfuse_enabled:
+    from langfuse import get_client, observe, update_current_span
+    _langfuse_client = get_client()
+
+    from openinference.instrumentation.crewai import CrewAIInstrumentor
+    CrewAIInstrumentor().instrument(skip_dep_check=True)
+else:
+    _langfuse_client = None
+    observe = lambda **kwargs: (lambda f: f)  # no-op decorator
+    update_current_span = None
+
+from tools import supabase_execute_sql, qdrant_semantic_search
+
 LLM_MODEL = os.environ.get("CREWAI_LLM", "anthropic/claude-sonnet-4-20250514")
-
-_lf: Langfuse | None = None
-
-
-def _get_langfuse() -> Langfuse | None:
-    global _lf
-    if _lf is not None:
-        return _lf
-    secret = os.environ.get("LANGFUSE_SECRET_KEY", "").strip()
-    public = os.environ.get("LANGFUSE_PUBLIC_KEY", "").strip()
-    host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").strip()
-    if secret and public and not secret.startswith("sk-lf-"):
-        _lf = Langfuse(
-            public_key=public,
-            secret_key=secret,
-            host=host,
-        )
-        return _lf
-    return None
 
 
 @CrewBase
@@ -59,7 +60,9 @@ class ShopAgentCrew:
                 "numbers -- every figure comes from a SQL query result. "
                 "Available queries: revenue_by_state, orders_by_status, top_products, "
                 "payment_distribution, segment_analysis, revenue_by_category, "
-                "customer_count_by_state, orders_by_month, revenue_by_month, satisfaction_by_region. For monthly revenue trends or evolucao temporal, use revenue_by_month."
+                "customer_count_by_state, orders_by_month, revenue_by_month, "
+                "satisfaction_by_region. "
+                "For monthly revenue trends or evolucao temporal, use revenue_by_month."
             ),
             tools=[supabase_execute_sql],
             llm=LLM_MODEL,
@@ -166,30 +169,37 @@ class ShopAgentCrew:
 
     @crew
     def crew(self) -> Crew:
-        """Assemble the ShopAgent crew with optional LangFuse tracing."""
-        lf = _get_langfuse()
-        callbacks = []
-        if lf:
-            handlers = lf.get_callback_handlers(
-                metadata={"crew": "shopagent-v4", "environment": os.environ.get("ENVIRONMENT", "local")}
-            )
-            callbacks = handlers if isinstance(handlers, list) else [handlers]
-
+        """Assemble the ShopAgent crew."""
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
             memory=True,
             verbose=True,
-            callback=callbacks if callbacks else None,
         )
 
 
-@observe()
-def run_crew(question: str) -> str:
-    """Run the ShopAgent crew with Langfuse tracing."""
+@observe(name="shopagent-crew-run")
+def run_crew(question: str, session_id: str | None = None, user_id: str | None = None) -> str:
+    """Run the ShopAgent crew with Langfuse tracing.
+
+    The @observe decorator creates a root span. CrewAIInstrumentor
+    auto-instruments the crew execution with nested spans per agent.
+    """
+    if update_current_span:
+        update_current_span(
+            input={"question": question},
+            session_id=session_id,
+            user_id=user_id,
+            tags=["shopagent-day4", os.environ.get("ENVIRONMENT", "local")],
+        )
+
     shop_crew = ShopAgentCrew()
     result = shop_crew.crew().kickoff(inputs={"question": question})
+
+    if _langfuse_client:
+        _langfuse_client.flush()
+
     return result.raw
 
 
@@ -197,14 +207,14 @@ if __name__ == "__main__":
     question = "Analise completa de satisfacao dos clientes por regiao"
 
     print("=" * 60)
-    print("  ShopAgent Crew -- Day 4 Multi-Agent")
-    print(f"  Question: {question}")
+    print(" ShopAgent Crew -- Day 4 Multi-Agent")
+    print(f" Question: {question}")
     print("=" * 60)
 
-    output = run_crew(question)
+    output = run_crew(question, session_id="cli-session", user_id="cli-user")
 
     print()
     print("=" * 60)
-    print("  FINAL REPORT")
+    print(" FINAL REPORT")
     print("=" * 60)
     print(output)
