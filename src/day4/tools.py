@@ -14,16 +14,30 @@ import psycopg2
 import qdrant_client
 from crewai.tools import tool
 from dotenv import load_dotenv
-from llama_index.core import Settings, VectorStoreIndex
-from llama_index.embeddings.fastembed import FastEmbedEmbedding
-from llama_index.llms.anthropic import Anthropic
-from llama_index.vector_stores.qdrant import QdrantVectorStore
+from fastembed import TextEmbedding
 from openai import OpenAI
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 _is_cloud = os.environ.get("ENVIRONMENT", "local") == "cloud"
+
+# Supabase REST client (used when direct DB connection fails, e.g. IPv6-only hosts)
+_sb_rest_client = None
+
+
+def _get_sb_rest_client():
+    global _sb_rest_client
+    if _sb_rest_client is None and _is_cloud:
+        try:
+            from supabase import create_client as _create_client
+            url = os.environ.get("SUPABASE_URL", "")
+            key = os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+            if url and key and not key.startswith("eyJ_your"):
+                _sb_rest_client = _create_client(url, key)
+        except ImportError:
+            pass
+    return _sb_rest_client
 
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
@@ -41,12 +55,15 @@ Responda APENAS com o nome da query, nada mais. Sem explicacao."""
 
 def _get_postgres_connection():
     if _is_cloud:
-        db_url = os.environ.get("SUPABASE_DB_URL")
-        if db_url:
-            return psycopg2.connect(db_url)
-    supabase_url = os.environ.get("SUPABASE_URL")
-    if supabase_url and not supabase_url.startswith("https://xxxxx"):
-        return psycopg2.connect(supabase_url)
+        db_url = os.environ.get("SUPABASE_DB_URL", "")
+        if db_url and "xxxxx" not in db_url and db_url.startswith("postgresql"):
+            try:
+                return psycopg2.connect(db_url)
+            except (psycopg2.OperationalError, OSError) as exc:
+                if "IPv6" in str(exc) or "timed out" in str(exc) or "could not connect" in str(exc):
+                    pass
+                else:
+                    raise
     return psycopg2.connect(
         host=os.environ.get("POSTGRES_HOST", "localhost"),
         port=int(os.environ.get("POSTGRES_PORT", 5432)),
@@ -55,6 +72,17 @@ def _get_postgres_connection():
         password=os.environ.get("POSTGRES_PASSWORD", "shopagent"),
     )
 
+
+def _exec_query_rpc(query_key: str) -> str | None:
+    """Execute a predefined query via Supabase RPC (fallback for IPv6-only hosts)."""
+    sb = _get_sb_rest_client()
+    if sb is None:
+        return None
+    try:
+        resp = sb.rpc("exec_shopagent_query", {"query_name": query_key}).execute()
+        return json.dumps(resp.data, ensure_ascii=False, indent=2)
+    except Exception:
+        return None
 
 def _get_qdrant_url() -> str:
     if _is_cloud:
@@ -70,16 +98,14 @@ def _get_qdrant_api_key() -> str | None:
     return None
 
 
-_llama_settings_initialized = False
+_embed_model = None
 
 
-def _configure_llama_settings() -> None:
-    global _llama_settings_initialized
-    if _llama_settings_initialized:
-        return
-    Settings.llm = Anthropic(model="claude-sonnet-4-20250514")
-    Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-base-en-v1.5")
-    _llama_settings_initialized = True
+def _get_embed_model():
+    global _embed_model
+    if _embed_model is None:
+        _embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+    return _embed_model
 
 
 SAFE_QUERIES: dict[str, str] = {
@@ -209,6 +235,11 @@ def supabase_execute_sql(query: str) -> str:
     try:
         conn = _get_postgres_connection()
     except (psycopg2.OperationalError, ValueError) as exc:
+        # Fallback to Supabase RPC (bypasses IPv6-only direct DB)
+        if _is_cloud:
+            rpc_result = _exec_query_rpc(query_key)
+            if rpc_result is not None:
+                return rpc_result
         return f"Database connection failed: {exc}"
 
     try:
@@ -247,34 +278,70 @@ def qdrant_semantic_search(question: str) -> str:
     Args:
         question: Natural language question for semantic similarity search in reviews.
     """
-    _configure_llama_settings()
-
     qdrant_url = _get_qdrant_url()
     api_key = _get_qdrant_api_key()
     collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
     try:
+        embed_model = _get_embed_model()
+        query_embedding = list(embed_model.embed([question]))[0]
+
         client_kwargs: dict = {"url": qdrant_url}
         if api_key:
             client_kwargs["api_key"] = api_key
         client = qdrant_client.QdrantClient(**client_kwargs)
 
-        vector_store = QdrantVectorStore(client=client, collection_name=collection_name)
-        index = VectorStoreIndex.from_vector_store(vector_store)
-        engine = index.as_query_engine(similarity_top_k=5)
-        response = engine.query(question)
+        results = client.query_points(
+            collection_name=collection_name,
+            query=query_embedding.tolist(),
+            limit=5,
+            with_payload=True,
+        )
 
         sources = []
-        for node in response.source_nodes:
+        for point in results.points:
+            # Qdrant Cloud: text in payload["text"] (direct)
+            # Qdrant local (LlamaIndex): text in payload["_node_content"] JSON
+            text = point.payload.get("text", "")
+            rating = point.payload.get("rating")
+            sentiment = point.payload.get("sentiment")
+            if not text:
+                node_content = point.payload.get("_node_content", "")
+                if node_content:
+                    try:
+                        import json as _json
+                        node = _json.loads(node_content)
+                        raw_text = node.get("text", "")
+                        # LlamaIndex stores the JSONL row as text; extract comment
+                        # The text may be missing opening { due to LlamaIndex truncation
+                        try:
+                            to_parse = raw_text.strip()
+                            if not to_parse.startswith("{"):
+                                to_parse = "{" + to_parse
+                            # Ensure valid JSON by closing any open braces
+                            open_braces = to_parse.count("{") - to_parse.count("}")
+                            if open_braces > 0:
+                                to_parse += "}" * open_braces
+                            review = _json.loads(to_parse)
+                            text = review.get("comment", raw_text)
+                            rating = rating or review.get("rating")
+                            sentiment = sentiment or review.get("sentiment")
+                        except (ValueError, TypeError):
+                            text = raw_text
+                    except (ValueError, TypeError):
+                        pass
             sources.append({
-                "score": round(node.score, 3),
-                "text": node.text[:200],
+                "score": round(point.score, 3),
+                "text": text[:200],
+                "rating": rating,
+                "sentiment": sentiment,
             })
 
         result = {
-            "answer": str(response.response),
+            "question": question,
             "sources": sources,
-            "total_sources": len(response.source_nodes),
+            "total_sources": len(sources),
+            "hint": "Use these review excerpts to answer the user question.",
         }
 
         return json.dumps(result, ensure_ascii=False, indent=2)

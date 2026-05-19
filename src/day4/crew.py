@@ -28,7 +28,7 @@ _langfuse_enabled = bool(
 )
 
 if _langfuse_enabled:
-    from langfuse import get_client, observe, update_current_span
+    from langfuse import get_client, observe
     _langfuse_client = get_client()
 
     from openinference.instrumentation.crewai import CrewAIInstrumentor
@@ -36,11 +36,38 @@ if _langfuse_enabled:
 else:
     _langfuse_client = None
     observe = lambda **kwargs: (lambda f: f)  # no-op decorator
-    update_current_span = None
 
-from tools import supabase_execute_sql, qdrant_semantic_search
+from day4.tools import supabase_execute_sql, qdrant_semantic_search
 
 LLM_MODEL = os.environ.get("CREWAI_LLM", "anthropic/claude-sonnet-4-20250514")
+
+
+def _get_llm():
+    """Build CrewAI LLM instance.
+
+    Precedence (configured via CREWAI_LLM env var):
+    - 'nim/...' -> NVIDIA NIM (OpenAI-compatible, free tier available)
+    - 'anthropic/...' -> Anthropic API (requires ANTHROPIC_API_KEY)
+    - anything else -> passed through to CrewAI default
+    """
+    model = os.environ.get("CREWAI_LLM", LLM_MODEL)
+    nim_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
+
+    # NVIDIA NIM: free, fast, OpenAI-compatible
+    if model.startswith("nim/") and nim_key:
+        actual_model = model.replace("nim/", "", 1)
+        from crewai import LLM
+        return LLM(
+            model=f"openai/{actual_model}",
+            api_key=nim_key,
+            base_url="https://integrate.api.nvidia.com/v1",
+            timeout=120,
+            max_tokens=1024,
+            temperature=0.1,
+        )
+
+    # Default: return model string (CrewAI resolves it)
+    return model
 
 
 @CrewBase
@@ -65,7 +92,7 @@ class ShopAgentCrew:
                 "For monthly revenue trends or evolucao temporal, use revenue_by_month."
             ),
             tools=[supabase_execute_sql],
-            llm=LLM_MODEL,
+            llm=_get_llm(),
             verbose=True,
             max_iter=5,
             allow_delegation=False,
@@ -84,7 +111,7 @@ class ShopAgentCrew:
                 "the data. Ask questions in Portuguese for best semantic match."
             ),
             tools=[qdrant_semantic_search],
-            llm=LLM_MODEL,
+            llm=_get_llm(),
             verbose=True,
             max_iter=5,
             allow_delegation=False,
@@ -102,7 +129,7 @@ class ShopAgentCrew:
                 "Your reports always include specific numbers, key findings, and "
                 "concrete recommendations. Write in Portuguese."
             ),
-            llm=LLM_MODEL,
+            llm=_get_llm(),
             verbose=True,
             max_iter=3,
             allow_delegation=False,
@@ -174,7 +201,7 @@ class ShopAgentCrew:
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
-            memory=True,
+            memory=False,
             verbose=True,
         )
 
@@ -185,14 +212,11 @@ def run_crew(question: str, session_id: str | None = None, user_id: str | None =
 
     The @observe decorator creates a root span. CrewAIInstrumentor
     auto-instruments the crew execution with nested spans per agent.
+    Session/user context set via env vars (Langfuse v4 pattern).
     """
-    if update_current_span:
-        update_current_span(
-            input={"question": question},
-            session_id=session_id,
-            user_id=user_id,
-            tags=["shopagent-day4", os.environ.get("ENVIRONMENT", "local")],
-        )
+    os.environ["LANGFUSE_SESSION_ID"] = session_id or ""
+    os.environ["LANGFUSE_USER_ID"] = user_id or ""
+    os.environ["LANGFUSE_TAGS"] = "shopagent-day4," + os.environ.get("ENVIRONMENT", "local")
 
     shop_crew = ShopAgentCrew()
     result = shop_crew.crew().kickoff(inputs={"question": question})

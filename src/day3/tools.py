@@ -5,11 +5,13 @@ Query routing uses a two-tier strategy:
 2. NVIDIA NIM LLM fallback via nemotron-mini-4b (~0.3s, 100% accuracy)
 """
 
+import json
 import os
 import sys
 from pathlib import Path
 
 import psycopg2
+import qdrant_client
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 from openai import OpenAI
@@ -18,6 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+_is_cloud = os.environ.get("ENVIRONMENT", "local") == "cloud"
 
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
@@ -114,7 +118,14 @@ QUERIES = {
 VALID_QUERIES = set(QUERIES.keys())
 
 
-def _get_connection():
+def _get_postgres_connection():
+    if _is_cloud:
+        db_url = os.environ.get("SUPABASE_DB_URL", "")
+        if db_url and "xxxxx" not in db_url and db_url.startswith("postgresql"):
+            try:
+                return psycopg2.connect(db_url)
+            except (psycopg2.OperationalError, OSError):
+                pass
     return psycopg2.connect(
         host=os.environ.get("POSTGRES_HOST", "localhost"),
         port=int(os.environ.get("POSTGRES_PORT", 5432)),
@@ -122,6 +133,59 @@ def _get_connection():
         user=os.environ.get("POSTGRES_USER", "shopagent"),
         password=os.environ.get("POSTGRES_PASSWORD", "shopagent"),
     )
+
+
+_sb_rest_client = None
+
+
+def _get_sb_rest_client():
+    global _sb_rest_client
+    if _sb_rest_client is None and _is_cloud:
+        try:
+            from supabase import create_client as _create_client
+            url = os.environ.get("SUPABASE_URL", "")
+            key = os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+            if url and key and not key.startswith("eyJ_your"):
+                _sb_rest_client = _create_client(url, key)
+        except ImportError:
+            pass
+    return _sb_rest_client
+
+
+def _exec_query_rpc(query_name: str) -> str | None:
+    sb = _get_sb_rest_client()
+    if sb is None:
+        return None
+    try:
+        resp = sb.rpc("exec_shopagent_query", {"query_name": query_name}).execute()
+        return json.dumps(resp.data, ensure_ascii=False, indent=2)
+    except Exception:
+        return None
+
+
+def _get_qdrant_url() -> str:
+    if _is_cloud:
+        cloud_url = os.environ.get("QDRANT_CLOUD_URL", "")
+        if cloud_url and not cloud_url.startswith("https://xxxxx"):
+            return cloud_url
+    return os.environ.get("QDRANT_URL", "http://localhost:6333")
+
+
+def _get_qdrant_api_key() -> str | None:
+    if _is_cloud:
+        return os.environ.get("QDRANT_CLOUD_API_KEY")
+    return None
+
+
+_embed_model = None
+
+
+def _get_embed_model():
+    global _embed_model
+    if _embed_model is None:
+        from fastembed import TextEmbedding
+        _embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+    return _embed_model
 
 
 def _match_query(question: str) -> str | None:
@@ -204,8 +268,12 @@ def supabase_execute_sql(question: str) -> str:
 
     sql = QUERIES[matched]["sql"]
     try:
-        conn = _get_connection()
+        conn = _get_postgres_connection()
     except (psycopg2.OperationalError, ValueError) as exc:
+        if _is_cloud:
+            rpc_result = _exec_query_rpc(matched)
+            if rpc_result is not None:
+                return f"Query: {matched}\n\n{rpc_result}"
         return f"Erro ao conectar ao Postgres: {exc}"
 
     try:
@@ -236,32 +304,65 @@ def qdrant_semantic_search(question: str) -> str:
         question: Natural language question for semantic similarity search in reviews.
     """
     try:
-        from llama_index.core import Settings, VectorStoreIndex
-        from llama_index.embeddings.fastembed import FastEmbedEmbedding
-        from llama_index.vector_stores.qdrant import QdrantVectorStore
-        import qdrant_client
+        from fastembed import TextEmbedding
 
-        Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-base-en-v1.5")
-
-        qdrant_url = os.environ.get("QDRANT_URL", "http://localhost:6333")
+        qdrant_url = _get_qdrant_url()
+        qdrant_api_key = _get_qdrant_api_key()
         collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
-        client = qdrant_client.QdrantClient(url=qdrant_url, check_compatibility=False)
-        vector_store = QdrantVectorStore(client=client, collection_name=collection_name)
-        index = VectorStoreIndex.from_vector_store(vector_store)
+        embed_model = _get_embed_model()
+        query_embedding = list(embed_model.embed([question]))[0]
 
-        retriever = index.as_retriever(similarity_top_k=5)
-        nodes = retriever.retrieve(question)
+        client_kwargs = {"url": qdrant_url}
+        if qdrant_api_key:
+            client_kwargs["api_key"] = qdrant_api_key
+        client = qdrant_client.QdrantClient(**client_kwargs)
 
-        if not nodes:
-            return "Nenhum review relevante encontrado."
+        results = client.query_points(
+            collection_name=collection_name,
+            query=query_embedding.tolist(),
+            limit=5,
+            with_payload=True,
+        )
 
         snippets = []
-        for node in nodes:
-            score = node.score if node.score is not None else 0.0
-            snippets.append(f"[score: {score:.3f}] {node.text[:200]}")
+        for point in results.points:
+            text = point.payload.get("text", "")
+            rating = point.payload.get("rating")
+            sentiment = point.payload.get("sentiment")
+            if not text:
+                node_content = point.payload.get("_node_content", "")
+                if node_content:
+                    try:
+                        node = json.loads(node_content)
+                        raw_text = node.get("text", "")
+                        try:
+                            to_parse = raw_text.strip()
+                            if not to_parse.startswith("{"):
+                                to_parse = "{" + to_parse
+                            open_braces = to_parse.count("{") - to_parse.count("}")
+                            if open_braces > 0:
+                                to_parse += "}" * open_braces
+                            review = json.loads(to_parse)
+                            text = review.get("comment", raw_text)
+                            rating = rating or review.get("rating")
+                            sentiment = sentiment or review.get("sentiment")
+                        except (ValueError, TypeError):
+                            text = raw_text
+                    except (ValueError, TypeError):
+                        pass
+            label = f"[score: {point.score:.3f}"
+            if rating:
+                label += f", rating: {rating}"
+            if sentiment:
+                label += f", {sentiment}"
+            label += "]"
+            snippets.append(f"{label} {text[:200]}")
 
-        return f"Reviews encontrados ({len(nodes)} resultados):\n\n" + "\n\n".join(snippets)
+        if not snippets:
+            return "Nenhum review relevante encontrado."
+
+        return f"Reviews encontrados ({len(snippets)} resultados):\n\n" + "\n\n".join(snippets)
 
     except Exception as exc:
         return f"Erro ao buscar no Qdrant: {exc}"

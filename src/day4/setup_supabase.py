@@ -1,16 +1,12 @@
-"""ShopAgent Cloud Migration — Docker local -> Supabase REST + Qdrant Cloud.
+"""ShopAgent Day 4 — Supabase cloud setup via REST API.
 
-Steps:
-1. Read local Postgres data
-2. Create Supabase tables via SQL Editor RPC (or manual SQL pasted in Dashboard)
-3. Insert data into Supabase via REST API (bypasses IPv6-only direct DB)
-4. Re-ingest reviews into Qdrant Cloud (already done if collection exists)
-5. Toggle ENVIRONMENT=cloud
+Creates tables + RPC function in Supabase and migrates data
+from local Docker Postgres using the REST API (bypasses IPv6-only DB host).
 
 Usage:
-    python migrate_to_cloud.py --dry-run   # preview what will migrate
-    python migrate_to_cloud.py             # full migration
-    python migrate_to_cloud.py --create-tables  # only create tables via RPC
+    1. Set SUPABASE_SERVICE_KEY in .env (from Dashboard > Settings > API)
+    2. Run:  python -m day4.setup_supabase
+    3. Or:   python -m day4.setup_supabase --dry-run
 """
 
 import argparse
@@ -18,14 +14,14 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
 from supabase import create_client
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 
@@ -39,45 +35,20 @@ def _local_conn():
     )
 
 
-def _sb_client(use_service_role=False):
+def _sb_client():
     url = os.environ.get("SUPABASE_URL", "")
-    if use_service_role:
-        key = os.environ.get("SUPABASE_SERVICE_KEY", "")
-        if not key or key.startswith("eyJ_your"):
-            key = os.environ.get("SUPABASE_KEY", "")
-    else:
-        key = os.environ.get("SUPABASE_KEY", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
     if not url or not key:
-        print("[ERROR] SUPABASE_URL and SUPABASE_KEY/SUPABASE_SERVICE_KEY must be set in .env")
+        print("[ERROR] Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env")
+        sys.exit(1)
+    if key.startswith("eyJ_your"):
+        print("[ERROR] SUPABASE_SERVICE_KEY not configured. Get it from:")
+        print("  Supabase Dashboard > Settings > API > service_role secret")
         sys.exit(1)
     return create_client(url, key)
 
 
-def _count_local():
-    conn = _local_conn()
-    counts = {}
-    try:
-        with conn.cursor() as cur:
-            for table in ["customers", "products", "orders"]:
-                cur.execute(f"SELECT COUNT(*) FROM {table}")
-                counts[table] = cur.fetchone()[0]
-    finally:
-        conn.close()
-    return counts
-
-
-def _count_cloud(sb):
-    counts = {}
-    for table in ["customers", "products", "orders"]:
-        try:
-            resp = sb.table(table).select("id", count="exact").limit(0).execute()
-            counts[table] = resp.count
-        except Exception:
-            counts[table] = "table not found"
-    return counts
-
-
-CREATE_TABLES_SQL = """-- ShopAgent tables for Supabase
+CREATE_TABLES_RPC_SQL = """-- ShopAgent: tables + RPC for SQL queries
 CREATE TABLE IF NOT EXISTS customers (
     customer_id UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -114,7 +85,6 @@ CREATE INDEX IF NOT EXISTS idx_customers_state ON customers(state);
 CREATE INDEX IF NOT EXISTS idx_customers_segment ON customers(segment);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 
--- Enable RLS with permissive policies for service_role
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
@@ -123,7 +93,6 @@ CREATE POLICY "Service role full access" ON customers FOR ALL USING (true) WITH 
 CREATE POLICY "Service role full access" ON products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON orders FOR ALL USING (true) WITH CHECK (true);
 
--- RPC function for predefined SQL queries (REST API fallback for IPv6-only hosts)
 CREATE OR REPLACE FUNCTION exec_shopagent_query(query_name TEXT)
 RETURNS JSON AS $$
 DECLARE
@@ -219,6 +188,13 @@ def _row_to_dict(row, columns):
     return d
 
 
+TABLE_COLUMNS = {
+    "customers": ["customer_id", "name", "email", "city", "state", "segment"],
+    "products": ["product_id", "name", "category", "price", "brand"],
+    "orders": ["order_id", "customer_id", "product_id", "qty", "total", "status", "payment", "created_at"],
+}
+
+
 def _migrate_table_rest(sb, local_cur, table: str, columns: list[str]) -> int:
     col_list = ", ".join(columns)
     local_cur.execute(f"SELECT {col_list} FROM {table}")
@@ -241,7 +217,6 @@ def _migrate_table_rest(sb, local_cur, table: str, columns: list[str]) -> int:
             errors += 1
             if errors == 1:
                 print(f"  {table}: insert error: {exc}")
-                print(f"  {table}: first failing record: {batch[0]}")
 
     status = f"{inserted}/{len(records)} rows"
     if errors:
@@ -250,200 +225,82 @@ def _migrate_table_rest(sb, local_cur, table: str, columns: list[str]) -> int:
     return inserted
 
 
-TABLE_COLUMNS = {
-    "customers": ["customer_id", "name", "email", "city", "state", "segment"],
-    "products": ["product_id", "name", "category", "price", "brand"],
-    "orders": ["order_id", "customer_id", "product_id", "qty", "total", "status", "payment", "created_at"],
-}
-
-
-def _ingest_qdrant_cloud():
-    from fastembed import TextEmbedding
-    import qdrant_client
-    from qdrant_client.http.models import PointStruct
-
-    cloud_url = os.environ.get("QDRANT_CLOUD_URL", "")
-    api_key = os.environ.get("QDRANT_CLOUD_API_KEY", "")
-    if not cloud_url or "xxxxx" in cloud_url:
-        print("[ERROR] QDRANT_CLOUD_URL not configured in .env")
-        return False
-
-    collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
-
-    review_dir = PROJECT_ROOT / "gen" / "data" / "reviews"
-    jsonl_files = sorted(review_dir.glob("*.jsonl"))
-    if not jsonl_files:
-        print("[ERROR] No review JSONL files found in gen/data/reviews/")
-        return False
-
-    reviews = []
-    for f in jsonl_files:
-        with open(f, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    try:
-                        reviews.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
-
-    if not reviews:
-        print("[WARN] No reviews found in JSONL files")
-        return False
-
-    print(f"\n[QDRANT] Ingesting {len(reviews)} reviews into Qdrant Cloud...")
-
-    client = qdrant_client.QdrantClient(url=cloud_url, api_key=api_key)
-
-    embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
-
-    texts = [r.get("comment", r.get("text", "")) for r in reviews]
-    embeddings = list(embed_model.embed(texts))
-
-    points = []
-    for review, embedding in zip(reviews, embeddings):
-        text = review.get("comment", review.get("text", ""))
-        if not text:
-            continue
-        points.append(PointStruct(
-            id=review.get("review_id", str(uuid.uuid4())),
-            vector=embedding.tolist(),
-            payload={
-                "text": text,
-                "review_id": review.get("review_id", ""),
-                "order_id": review.get("order_id", ""),
-                "rating": review.get("rating"),
-                "sentiment": review.get("sentiment", ""),
-            },
-        ))
-
-    if not points:
-        print("[WARN] No valid points to insert")
-        return False
-
-    batch_size = 100
-    upserted = 0
-    for i in range(0, len(points), batch_size):
-        batch = points[i:i + batch_size]
-        client.upsert(collection_name=collection_name, points=batch)
-        upserted += len(batch)
-
-    print(f"  {upserted} reviews indexed in Qdrant Cloud")
-    return True
-
-
-def create_tables(sb):
-    print("\n[TABLES] Creating tables in Supabase...")
-    print("Paste the following SQL in Supabase Dashboard > SQL Editor:")
-    print("-" * 60)
-    print(CREATE_TABLES_SQL)
-    print("-" * 60)
-
-    try:
-        result = sb.rpc("exec_sql", {"query": CREATE_TABLES_SQL}).execute()
-        print("Tables created via RPC!")
-    except Exception:
-        print("\n[RPC] Supabase RPC not available. Use the SQL Editor method above.")
-        print("1. Go to https://supabase.com/dashboard")
-        print("2. Select your project")
-        print("3. Click 'SQL Editor' in the sidebar")
-        print("4. Paste the SQL above and click 'Run'")
-
-
 def migrate(dry_run: bool = False):
-    env_mode = os.environ.get("ENVIRONMENT", "local")
     print("=" * 60)
-    print("  ShopAgent Cloud Migration (REST API)")
+    print("  ShopAgent Supabase Migration (REST API)")
     print(f"  Mode: {'DRY RUN' if dry_run else 'LIVE MIGRATION'}")
-    print(f"  Current ENVIRONMENT: {env_mode}")
     print("=" * 60)
 
-    # Step 1: Count local data
-    print("\n[1/4] Counting local Docker data...")
+    # Step 1: Check local data
+    print("\n[1/3] Counting local Docker data...")
     try:
-        local_counts = _count_local()
-        for table, count in local_counts.items():
-            print(f"  {table}: {count} rows")
+        local = _local_conn()
+        with local.cursor() as cur:
+            for table in TABLE_COLUMNS:
+                cur.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cur.fetchone()[0]
+                print(f"  {table}: {count} rows")
+        local.close()
     except Exception as exc:
         print(f"[ERROR] Cannot connect to local Postgres: {exc}")
-        print("Make sure Docker containers are running: docker compose up -d")
         return
 
-    # Step 2: Check Supabase REST API
-    print("\n[2/4] Checking Supabase cloud via REST API...")
-    sb = _sb_client(use_service_role=True)
-    cloud_counts = _count_cloud(sb)
-    for table, count in cloud_counts.items():
-        print(f"  {table}: {count} rows (existing in cloud)")
+    # Step 2: Check Supabase (tables must exist first — created via Dashboard SQL)
+    print("\n[2/3] Checking Supabase cloud...")
+    sb = _sb_client()
 
-    has_tables = all(isinstance(c, int) for c in cloud_counts.values())
+    tables_exist = True
+    for table in TABLE_COLUMNS:
+        try:
+            resp = sb.table(table).select("*").limit(0).execute()
+            print(f"  {table}: exists")
+        except Exception:
+            print(f"  {table}: NOT FOUND")
+            tables_exist = False
 
-    if not has_tables:
-        print("\n[ACTION REQUIRED] Tables don't exist in Supabase yet.")
-        print("Create them with: python migrate_to_cloud.py --create-tables")
-        if not dry_run:
-            print("\nAttempting auto-create via Supabase Dashboard SQL...")
-            create_tables(sb)
+    if not tables_exist:
+        print("\n[ACTION REQUIRED] Tables not found in Supabase.")
+        print("Paste the SQL below into Supabase Dashboard > SQL Editor:\n")
+        print(CREATE_TABLES_RPC_SQL)
+        print("\nAfter creating tables, re-run: python -m day4.setup_supabase")
         return
 
     if dry_run:
-        print("\n[DRY RUN] No data will be modified.")
-        print("To run the migration: python migrate_to_cloud.py")
+        print("\n[DRY RUN] Tables exist. No data will be modified.")
         return
 
-    # Step 3: Migrate Postgres data via REST
-    print("\n[3/4] Migrating Postgres -> Supabase (REST API)...")
+    # Step 3: Migrate data via REST
+    print("\n[3/3] Migrating data via REST API...")
     local = _local_conn()
     try:
         local_cur = local.cursor()
-        total_migrated = 0
+        total = 0
         for table, columns in TABLE_COLUMNS.items():
             count = _migrate_table_rest(sb, local_cur, table, columns)
-            total_migrated += count
-        print(f"\n  Total: {total_migrated} rows migrated to Supabase")
+            total += count
+        print(f"\n  Total: {total} rows migrated to Supabase")
     except Exception as exc:
         print(f"\n[ERROR] Migration failed: {exc}")
     finally:
         local.close()
 
-    # Step 4: Qdrant Cloud (skip if already populated)
-    print("\n[4/4] Checking Qdrant Cloud...")
+    # Verify RPC
+    print("\nVerifying RPC function...")
     try:
-        import qdrant_client
-        qdrant_url = os.environ.get("QDRANT_CLOUD_URL", "")
-        qdrant_key = os.environ.get("QDRANT_CLOUD_API_KEY", "")
-        client = qdrant_client.QdrantClient(url=qdrant_url, api_key=qdrant_key)
-        collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
-        info = client.get_collection(collection_name)
-        count = info.points_count
-        print(f"  Qdrant Cloud: {count} reviews already indexed")
-        if count < 10:
-            print("  Low count — re-ingesting...")
-            _ingest_qdrant_cloud()
+        resp = sb.rpc("exec_shopagent_query", {"query_name": "revenue_by_state"}).execute()
+        if resp.data:
+            print(f"  exec_shopagent_query('revenue_by_state'): {len(resp.data)} rows returned")
         else:
-            print("  Skipping re-ingestion (already populated)")
+            print("  RPC returned no data")
     except Exception as exc:
-        print(f"  Qdrant collection not found or error: {exc}")
-        print("  Attempting to ingest...")
-        _ingest_qdrant_cloud()
+        print(f"  RPC not available: {exc}")
+        print("  Create it by pasting the SQL into Dashboard > SQL Editor")
 
-    # Final
-    print("\n" + "=" * 60)
-    print("  Migration complete!")
-    print("  To switch to cloud mode, set in .env:")
-    print("  ENVIRONMENT=cloud")
-    print("=" * 60)
+    print("\nDone! Set ENVIRONMENT=cloud in .env to use Supabase.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ShopAgent Cloud Migration (REST API)")
-    parser.add_argument("--dry-run", action="store_true", help="Preview without modifying cloud")
-    parser.add_argument("--create-tables", action="store_true", help="Print SQL to create Supabase tables")
+    parser = argparse.ArgumentParser(description="ShopAgent Supabase Setup (REST API)")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-
-    if args.create_tables:
-        load_dotenv(PROJECT_ROOT / ".env")
-        sb = _sb_client(use_service_role=True)
-        create_tables(sb)
-    else:
-        migrate(dry_run=args.dry_run)
+    migrate(dry_run=args.dry_run)
