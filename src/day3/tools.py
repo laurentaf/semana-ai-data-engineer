@@ -8,6 +8,7 @@ Query routing uses a two-tier strategy:
 import json
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
 import psycopg2
@@ -31,14 +32,21 @@ ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a
 
 Queries disponiveis: revenue_by_state, orders_by_status, top_products,
 payment_distribution, segment_analysis, revenue_by_category,
-premium_southeast_ticket, revenue_by_month, customer_count_by_state
+premium_southeast_ticket, revenue_by_month, revenue_by_month_state,
+customer_count_by_state, satisfaction_by_region
+
+REGRAS:
+- Se a pergunta menciona "evolucao" OU "temporal" + um estado (PE, SP, etc), use revenue_by_month_state
+- Se a pergunta menciona "evolucao" OU "temporal" sem estado, use revenue_by_month
+- Se a pergunta menciona "faturamento" + "por estado" sem "evolucao", use revenue_by_state
+- Se a pergunta menciona "satisfacao" + "regiao", use satisfaction_by_region
 
 Responda APENAS com o nome da query, nada mais. Sem explicacao."""
 
 
 QUERIES = {
     "revenue_by_state": {
-        "keywords": ["faturamento", "receita", "revenue", "estado", "state", "uf"],
+        "keywords": ["faturamento por estado", "receita por estado", "revenue by state", "faturamento estado", "uf", "total por estado"],
         "sql": """
             SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
             FROM orders o JOIN customers c ON o.customer_id = c.customer_id
@@ -99,12 +107,34 @@ QUERIES = {
         """,
     },
     "revenue_by_month": {
-        "keywords": ["mes", "month", "evolucao", "temporal", "faturamento mes", "receita mes", "timeline", "periodo", "trimestre"],
+        "keywords": ["evolucao geral", "mes a mes", "month", "temporal", "timeline", "periodo", "trimestre", "receita mes", "faturamento por mes"],
         "sql": """
             SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
             SUM(total) AS faturamento, ROUND(AVG(total), 2) AS ticket_medio
             FROM orders GROUP BY mes ORDER BY mes ASC LIMIT 12
         """,
+    },
+    "revenue_by_month_state": {
+        "keywords": ["evolucao estado", "evolucao pernambuco", "evolucao sp", "evolucao rj",
+                      "evolucao mg", "evolucao pr", "evolucao ba", "evolucao rs", "evolucao sc",
+                      "evolucao pe", "vendas por mes estado", "faturamento mes estado",
+                      "vendas estado mes", "temporal estado", "mes a mes estado",
+                      "evolucao das vendas", "evolucao faturamento"],
+        "sql": """
+SELECT c.state, TO_CHAR(o.created_at, 'YYYY-MM') AS mes, COUNT(o.order_id) AS pedidos,
+SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
+FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+GROUP BY c.state, mes ORDER BY c.state, mes ASC
+""",
+    },
+    "satisfaction_by_region": {
+        "keywords": ["satisfacao", "regiao", "satisfaction", "region"],
+        "sql": """
+SELECT c.state, c.segment, COUNT(o.order_id) AS pedidos,
+SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
+FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+GROUP BY c.state, c.segment ORDER BY c.state, faturamento DESC
+""",
     },
     "customer_count_by_state": {
         "keywords": ["quantos clientes", "cliente por estado", "clientes"],
@@ -144,7 +174,7 @@ def _get_sb_rest_client():
         try:
             from supabase import create_client as _create_client
             url = os.environ.get("SUPABASE_URL", "")
-            key = os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+            key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
             if url and key and not key.startswith("eyJ_your"):
                 _sb_rest_client = _create_client(url, key)
         except ImportError:
@@ -188,12 +218,18 @@ def _get_embed_model():
     return _embed_model
 
 
+def _normalize(text: str) -> str:
+    """Remove accents and normalize to lowercase for keyword matching."""
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
 def _match_query(question: str) -> str | None:
-    question_lower = question.lower()
+    question_norm = _normalize(question)
     best_match = None
     best_score = 0
     for name, config in QUERIES.items():
-        score = sum(1 for kw in config["keywords"] if kw in question_lower)
+        score = sum(1 for kw in config["keywords"] if _normalize(kw) in question_norm)
         if score > best_score:
             best_score = score
             best_match = name

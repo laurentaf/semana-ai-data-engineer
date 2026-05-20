@@ -4,7 +4,7 @@ Creates tables + RPC function in Supabase and migrates data
 from local Docker Postgres using the REST API (bypasses IPv6-only DB host).
 
 Usage:
-    1. Set SUPABASE_SERVICE_KEY in .env (from Dashboard > Settings > API)
+    1. Set SUPABASE_SERVICE_ROLE_KEY in .env (from Dashboard > Settings > API)
     2. Run:  python -m day4.setup_supabase
     3. Or:   python -m day4.setup_supabase --dry-run
 """
@@ -37,12 +37,12 @@ def _local_conn():
 
 def _sb_client():
     url = os.environ.get("SUPABASE_URL", "")
-    key = os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
     if not url or not key:
-        print("[ERROR] Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env")
+        print("[ERROR] Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env")
         sys.exit(1)
     if key.startswith("eyJ_your"):
-        print("[ERROR] SUPABASE_SERVICE_KEY not configured. Get it from:")
+        print("[ERROR] SUPABASE_SERVICE_ROLE_KEY not configured. Get it from:")
         print("  Supabase Dashboard > Settings > API > service_role secret")
         sys.exit(1)
     return create_client(url, key)
@@ -162,6 +162,13 @@ BEGIN
                 SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
                 FROM orders o JOIN customers c ON o.customer_id = c.customer_id
                 GROUP BY c.state, c.segment ORDER BY c.state, faturamento DESC
+            ) t;
+        WHEN 'revenue_by_month_state' THEN
+            SELECT json_agg(row_to_json(t)) INTO result FROM (
+                SELECT c.state, TO_CHAR(o.created_at, 'YYYY-MM') AS mes, COUNT(o.order_id) AS pedidos,
+                SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
+                FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+                GROUP BY c.state, mes ORDER BY c.state, mes ASC
             ) t;
         ELSE
             result := json_build_object('error', 'Unknown query: ' || query_name);

@@ -8,6 +8,7 @@ Query routing: keyword match -> NIM nemotron-mini-4b fallback (~0.3s, 100% acc)
 
 import json
 import os
+import unicodedata
 from pathlib import Path
 
 import psycopg2
@@ -32,7 +33,7 @@ def _get_sb_rest_client():
         try:
             from supabase import create_client as _create_client
             url = os.environ.get("SUPABASE_URL", "")
-            key = os.environ.get("SUPABASE_SERVICE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
+            key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "") or os.environ.get("SUPABASE_KEY", "")
             if url and key and not key.startswith("eyJ_your"):
                 _sb_rest_client = _create_client(url, key)
         except ImportError:
@@ -48,7 +49,13 @@ ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a
 Queries disponiveis: revenue_by_state, orders_by_status, top_products,
 payment_distribution, segment_analysis, revenue_by_category,
 customer_count_by_state, orders_by_month, revenue_by_month,
-satisfaction_by_region
+revenue_by_month_state, satisfaction_by_region
+
+REGRAS:
+- Se a pergunta menciona "evolucao" OU "temporal" + um estado (PE, SP, etc), use revenue_by_month_state
+- Se a pergunta menciona "evolucao" OU "temporal" sem estado, use revenue_by_month
+- Se a pergunta menciona "faturamento" + "por estado" sem "evolucao", use revenue_by_state
+- Se a pergunta menciona "satisfacao" + "regiao", use satisfaction_by_region
 
 Responda APENAS com o nome da query, nada mais. Sem explicacao."""
 
@@ -163,6 +170,12 @@ SAFE_QUERIES: dict[str, str] = {
         FROM orders o JOIN customers c ON o.customer_id = c.customer_id
         GROUP BY c.state, c.segment ORDER BY c.state, faturamento DESC
     """,
+    "revenue_by_month_state": """
+SELECT c.state, TO_CHAR(o.created_at, 'YYYY-MM') AS mes, COUNT(o.order_id) AS pedidos,
+SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
+FROM orders o JOIN customers c ON o.customer_id = c.customer_id
+GROUP BY c.state, mes ORDER BY c.state, mes ASC
+""",
 }
 
 VALID_QUERIES = set(SAFE_QUERIES.keys())
@@ -206,7 +219,7 @@ def supabase_execute_sql(query: str) -> str:
     The query parameter must be one of the predefined safe query names:
     revenue_by_state, orders_by_status, top_products, payment_distribution,
     segment_analysis, revenue_by_category, customer_count_by_state,
-    orders_by_month, revenue_by_month, satisfaction_by_region.
+    orders_by_month, revenue_by_month, revenue_by_month_state, satisfaction_by_region.
     If a natural language question is passed, the NIM router will map it.
 
     Args:
