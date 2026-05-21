@@ -201,4 +201,4 @@ The Chainlit app deploys to **Render** (free, no credit card, WebSocket support)
 
 ---
 
-AIDE Brasil | Formacao AI Data Engineer 2026 | Luan Moreno | April 13-16, 2026
+Laurent Alphonse Ferreira - for Formacao AI Data Engineer 2026
