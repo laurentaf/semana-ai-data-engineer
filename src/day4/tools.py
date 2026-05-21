@@ -15,7 +15,6 @@ import psycopg2
 import qdrant_client
 from crewai.tools import tool
 from dotenv import load_dotenv
-from fastembed import TextEmbedding
 from openai import OpenAI
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +42,7 @@ def _get_sb_rest_client():
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "nvidia/nemotron-mini-4b-instruct")
+NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "baai/bge-m3")
 
 ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
 
@@ -105,14 +105,13 @@ def _get_qdrant_api_key() -> str | None:
     return None
 
 
-_embed_model = None
-
-
-def _get_embed_model():
-    global _embed_model
-    if _embed_model is None:
-        _embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
-    return _embed_model
+def _get_embedding(text: str) -> list[float]:
+    """Get embedding via NVIDIA NIM API (lightweight, no local model download)."""
+    if not NIM_API_KEY:
+        raise RuntimeError("NVIDIA_NIM_API_KEY required for embedding")
+    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
+    resp = client.embeddings.create(model=NIM_EMBED_MODEL, input=[text])
+    return resp.data[0].embedding
 
 
 SAFE_QUERIES: dict[str, str] = {
@@ -296,8 +295,7 @@ def qdrant_semantic_search(question: str) -> str:
     collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
     try:
-        embed_model = _get_embed_model()
-        query_embedding = list(embed_model.embed([question]))[0]
+        query_embedding = _get_embedding(question)
 
         client_kwargs: dict = {"url": qdrant_url}
         if api_key:
@@ -306,7 +304,7 @@ def qdrant_semantic_search(question: str) -> str:
 
         results = client.query_points(
             collection_name=collection_name,
-            query=query_embedding.tolist(),
+            query=query_embedding,
             limit=5,
             with_payload=True,
         )

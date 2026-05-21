@@ -27,6 +27,7 @@ _is_cloud = os.environ.get("ENVIRONMENT", "local") == "cloud"
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "nvidia/nemotron-mini-4b-instruct")
+NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "baai/bge-m3")
 
 ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
 
@@ -207,15 +208,13 @@ def _get_qdrant_api_key() -> str | None:
     return None
 
 
-_embed_model = None
-
-
-def _get_embed_model():
-    global _embed_model
-    if _embed_model is None:
-        from fastembed import TextEmbedding
-        _embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
-    return _embed_model
+def _get_embedding(text: str) -> list[float]:
+    """Get embedding via NVIDIA NIM API (lightweight, no local model download)."""
+    if not NIM_API_KEY:
+        raise RuntimeError("NVIDIA_NIM_API_KEY required for embedding")
+    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
+    resp = client.embeddings.create(model=NIM_EMBED_MODEL, input=[text])
+    return resp.data[0].embedding
 
 
 def _normalize(text: str) -> str:
@@ -340,14 +339,11 @@ def qdrant_semantic_search(question: str) -> str:
         question: Natural language question for semantic similarity search in reviews.
     """
     try:
-        from fastembed import TextEmbedding
-
         qdrant_url = _get_qdrant_url()
         qdrant_api_key = _get_qdrant_api_key()
         collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
-        embed_model = _get_embed_model()
-        query_embedding = list(embed_model.embed([question]))[0]
+        query_embedding = _get_embedding(question)
 
         client_kwargs = {"url": qdrant_url}
         if qdrant_api_key:
@@ -356,7 +352,7 @@ def qdrant_semantic_search(question: str) -> str:
 
         results = client.query_points(
             collection_name=collection_name,
-            query=query_embedding.tolist(),
+            query=query_embedding,
             limit=5,
             with_payload=True,
         )

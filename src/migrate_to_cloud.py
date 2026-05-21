@@ -265,7 +265,6 @@ TABLE_COLUMNS = {
 
 
 def _ingest_qdrant_cloud():
-    from fastembed import TextEmbedding
     import qdrant_client
     from qdrant_client.http.models import PointStruct
 
@@ -275,6 +274,7 @@ def _ingest_qdrant_cloud():
         print("[ERROR] QDRANT_CLOUD_URL not configured in .env")
         return False
 
+    nim_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
     collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
     review_dir = PROJECT_ROOT / "gen" / "data" / "reviews"
@@ -302,7 +302,28 @@ def _ingest_qdrant_cloud():
 
     client = qdrant_client.QdrantClient(url=cloud_url, api_key=api_key)
 
-    embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+    # Use NIM embedding API (lightweight) or fallback to local fastembed
+    texts = [r.get("comment", r.get("text", "")) for r in reviews]
+    if nim_key:
+        from openai import OpenAI
+        nim_client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=nim_key)
+        embed_model_name = os.environ.get("NIM_EMBED_MODEL", "baai/bge-m3")
+        embeddings = []
+        batch_size = 50
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            resp = nim_client.embeddings.create(model=embed_model_name, input=batch)
+            embeddings.extend([d.embedding for d in resp.data])
+            print(f"  Embedded {min(i + batch_size, len(texts))}/{len(texts)} reviews")
+    else:
+        try:
+            from fastembed import TextEmbedding
+            embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+            embeddings = list(embed_model.embed(texts))
+            embeddings = [e.tolist() if hasattr(e, 'tolist') else e for e in embeddings]
+        except ImportError:
+            print("[ERROR] No embedding source available. Set NVIDIA_NIM_API_KEY or install fastembed.")
+            return False
 
     texts = [r.get("comment", r.get("text", "")) for r in reviews]
     embeddings = list(embed_model.embed(texts))
