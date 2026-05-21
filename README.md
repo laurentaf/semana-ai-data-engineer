@@ -163,6 +163,23 @@ presentation/               # HTML slide decks
 .claude/agents/             # SubAgents (ai-ml, code-quality, communication, domain, exploration)
 ```
 
+## Deploy (Free Tier)
+
+The Chainlit app deploys to **Render** (free, no credit card, WebSocket support).
+
+1. Push this repo to GitHub
+2. Go to [render.com](https://render.com) > New > Web Service > Connect repo
+3. Render auto-detects `render.yaml` — or set manually:
+   - **Build**: `pip install -r src/requirements.txt`
+   - **Start**: `chainlit run src/day4/chainlit_app.py --host 0.0.0.0 --port $PORT`
+4. Add env vars in Render dashboard (the ones marked `sync: false` in render.yaml):
+   `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NVIDIA_NIM_API_KEY`, `QDRANT_CLOUD_URL`, `QDRANT_CLOUD_API_KEY`
+5. Deploy — your app will be live at `https://shopagent-xxxx.onrender.com`
+
+> Free tier spins down after 15 min idle (cold start ~30s). Fine for a POC demo.
+
+**Alternatives**: Railway ($5 trial credit), Fly.io (3 free shared VMs, requires card).
+
 ## Environment Variables
 
 | Variable | Purpose | Required |
@@ -174,7 +191,7 @@ presentation/               # HTML slide decks
 | `CREWAI_LLM` | LLM for CrewAI agents (e.g. `nim/nvidia/nemotron-mini-4b-instruct`) | Yes (Day 4) |
 | `SUPABASE_URL` | Supabase project URL | Cloud mode |
 | `SUPABASE_KEY` | Supabase anon/publishable key | Cloud mode |
-| `SUPABASE_SERVICE_KEY` | Supabase service_role key (for table creation + RPC) | Cloud mode |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service_role key (for table creation + RPC) | Cloud mode |
 | `SUPABASE_DB_URL` | Supabase direct Postgres connection | Cloud mode (optional) |
 | `QDRANT_CLOUD_URL` | Qdrant Cloud cluster URL | Cloud mode |
 | `QDRANT_CLOUD_API_KEY` | Qdrant Cloud API key | Cloud mode |
