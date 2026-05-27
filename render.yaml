@@ -2,8 +2,8 @@ services:
   - type: web
     name: shopagent
     runtime: python
-    buildCommand: pip install -r src/requirements.txt
-    startCommand: chainlit run src/day4/chainlit_app.py --host 0.0.0.0 --port ${PORT:-8000}
+    buildCommand: pip install -r src/requirements-deploy.txt
+    startCommand: chainlit run src/day4/chainlit_lite.py --host 0.0.0.0 --port ${PORT:-8000}
     envVars:
       - key: ENVIRONMENT
         value: cloud
@@ -25,10 +25,4 @@ services:
         sync: false
       - key: QDRANT_COLLECTION
         value: shopagent_reviews
-      - key: LANGFUSE_SECRET_KEY
-        sync: false
-      - key: LANGFUSE_PUBLIC_KEY
-        sync: false
-      - key: LANGFUSE_HOST
-        value: https://us.cloud.langfuse.com
     plan: free
