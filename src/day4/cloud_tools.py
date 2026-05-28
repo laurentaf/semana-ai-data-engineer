@@ -217,6 +217,7 @@ def _get_postgres_connection():
                 return psycopg2.connect(db_url)
             except (psycopg2.OperationalError, OSError):
                 pass
+        raise psycopg2.OperationalError("Cloud mode: direct DB failed, use RPC fallback")
     return psycopg2.connect(
         host=os.environ.get("POSTGRES_HOST", "localhost"),
         port=int(os.environ.get("POSTGRES_PORT", 5432)),
