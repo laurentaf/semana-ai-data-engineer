@@ -34,11 +34,12 @@ REGRAS:
 - SEMPRE use uma ferramenta antes de responder. Nunca invente numeros.
 - Use query_ledger para perguntas sobre metricas, numeros, totais.
 - Use search_memory para perguntas sobre opinioes, reclamacoes, sentimento.
-- Para perguntas completas, use AMBAS as ferramentas.
+- Para perguntas que misturam metricas e opinioes, use AMBAS as ferramentas UMA UNICA VEZ cada.
+- NAO chame a mesma ferramenta mais de uma vez. Uma chamada por ferramenta e suficiente.
 - Responda em portugues com dados especificos.
 - Inclua numeros exatos nos seus relatorios.
-- NAO chame a mesma ferramenta mais de uma vez com a mesma pergunta.
-- Quando os dados tiverem multiplas linhas/periodos, liste TODOS os resultados em tabela markdown, NAO resuma em um unico total.
+- Quando os dados tiverem multiplas linhas/periodos/estados, liste TODOS os resultados em tabela markdown.
+- NAO resuma dados mensais em um unico total. Liste cada periodo separadamente.
 - NAO invente graficos ou imagens. Voce nao pode renderizar graficos. Use apenas texto e tabelas markdown."""
 
 
@@ -71,7 +72,7 @@ async def main(message: cl.Message):
     tools = get_tools_definitions()
 
     # Agentic loop: call tools until the LLM stops requesting them
-    max_iterations = 5
+    max_iterations = 3
     for _ in range(max_iterations):
         try:
             completion = client.chat.completions.create(
@@ -92,7 +93,7 @@ async def main(message: cl.Message):
         # Add assistant message to conversation
         messages.append(msg.model_dump())
 
-        # If no tool calls, we're done — stream the response
+        # If no tool calls, we're done
         if not msg.tool_calls:
             await cl.Message(content=msg.content or "").send()
             return
@@ -129,7 +130,7 @@ async def main(message: cl.Message):
     try:
         completion = client.chat.completions.create(
             model=NIM_MODEL,
-            messages=messages + [{"role": "user", "content": "Resuma os resultados encontrados em portugues."}],
+            messages=messages + [{"role": "user", "content": "Resuma os resultados encontrados em portugues em tabela markdown."}],
             temperature=0.1,
             max_tokens=1024,
             timeout=120,
