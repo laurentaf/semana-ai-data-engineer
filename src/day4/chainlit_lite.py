@@ -6,48 +6,12 @@ Uses NVIDIA NIM nemotron-mini-4b as LLM with tool calling.
 
 import json
 import os
-import re
 import sys
 from pathlib import Path
 
 import chainlit as cl
 from dotenv import load_dotenv
 from openai import OpenAI
-
-
-# Accent restoration for Portuguese text from NIM (tiny model drops accents)
-_ACCENT_MAP = {
-    "acao": "ação", "acoes": "ações", "ativo": "ativo",
-    "reclamacao": "reclamação", "reclamacoes": "reclamações",
-    "informacao": "informação", "informacoes": "informações",
-    "situacao": "situação", "situacoes": "situações",
-    "opiniao": "opinião", "opinioes": "opiniões",
-    "analise": "análise", "analises": "análises",
-    "periodo": "período", "categoria": "categoria",
-    "educacao": "educação", "saude": "saúde",
-    "musica": "música", "logica": "lógica",
-    "tecnica": "técnica", "tecnicas": "técnicas",
-    "critica": "crítica", "criticas": "críticas",
-    "fabrica": "fábrica", "fabricas": "fábricas",
-    "ciencia": "ciência", "cientifico": "científico",
-    "metodo": "método", "metodos": "métodos",
-    "proximo": "próximo", "proxima": "próxima",
-    "ultimo": "último", "ultima": "última",
-    "util": "útil", "publico": "público",
-    "numero": "número", "numeros": "números",
-    "genero": "gênero", "generos": "gêneros",
-}
-
-
-def _fix_portuguese_accents(text: str) -> str:
-    """Restore missing Portuguese accents from NIM tiny model output."""
-    # Word-boundary replacement for known patterns
-    result = text
-    for wrong, right in _ACCENT_MAP.items():
-        result = re.sub(r'\b' + wrong + r'\b', right, result, flags=re.IGNORECASE)
-    # Common collapsed patterns: "cao" -> "ção" at word endings
-    result = re.sub(r'(\w)(cao|coes|cao)\b', lambda m: m.group(1) + {'cao': 'ção', 'coes': 'ções', 'cao': 'ção'}[m.group(2)], result, flags=re.IGNORECASE)
-    return result
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -58,7 +22,7 @@ from day4.cloud_tools import query_ledger, search_memory, get_tools_definitions
 
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
-NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "nvidia/nemotron-mini-4b-instruct")
+NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "z-ai/glm-5.1")
 
 SYSTEM_PROMPT = """Voce e o ShopAgent, um assistente de analise de e-commerce.
 
@@ -127,7 +91,7 @@ async def main(message: cl.Message):
 
         # If no tool calls, we're done — stream the response
         if not msg.tool_calls:
-            await cl.Message(content=_fix_portuguese_accents(msg.content or "")).send()
+            await cl.Message(content=msg.content or "").send()
             return
 
         # Execute each tool call
@@ -167,6 +131,6 @@ async def main(message: cl.Message):
             max_tokens=1024,
             timeout=120,
         )
-        await cl.Message(content=_fix_portuguese_accents(completion.choices[0].message.content or "")).send()
+        await cl.Message(content=completion.choices[0].message.content or "").send()
     except Exception as exc:
         await cl.Message(content=f"Erro: {exc}").send()
