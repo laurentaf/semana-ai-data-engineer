@@ -38,7 +38,7 @@ def _get_sb_rest_client():
 
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
-NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "z-ai/glm-5.1")
+NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "meta/llama-3.1-70b-instruct")
 NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
 
 ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.

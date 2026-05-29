@@ -1,7 +1,7 @@
 """ShopAgent Lite — Single-agent Chainlit app using NIM directly (no crewai).
 
 Built for Render free-tier deployment (512MB RAM).
-Uses NVIDIA NIM nemotron-mini-4b as LLM with tool calling.
+Uses NVIDIA NIM llama-3.1-70b as LLM with tool calling.
 """
 
 import json
@@ -22,7 +22,7 @@ from day4.cloud_tools import query_ledger, search_memory, get_tools_definitions
 
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
-NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "z-ai/glm-5.1")
+NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "meta/llama-3.1-70b-instruct")
 
 SYSTEM_PROMPT = """Voce e o ShopAgent, um assistente de analise de e-commerce.
 

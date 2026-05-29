@@ -70,7 +70,7 @@ def _count_cloud(sb):
     counts = {}
     for table in ["customers", "products", "orders"]:
         try:
-            resp = sb.table(table).select("id", count="exact").limit(0).execute()
+            resp = sb.table(table).select("*", count="exact").limit(0).execute()
             counts[table] = resp.count
         except Exception:
             counts[table] = "table not found"
@@ -219,6 +219,8 @@ def _row_to_dict(row, columns):
             d[col] = val.isoformat()
         elif val is None:
             d[col] = None
+        elif isinstance(val, float) and val == int(val) and col == "qty":
+            d[col] = int(val)
         elif hasattr(val, "__float__"):
             d[col] = float(val)
         else:
@@ -302,20 +304,8 @@ def _ingest_qdrant_cloud():
 
     client = qdrant_client.QdrantClient(url=cloud_url, api_key=api_key)
 
-    # Use NIM embedding API (lightweight) or fallback to local fastembed
+    # Use local fastembed for bulk ingestion (more reliable than NIM for batches)
     texts = [r.get("comment", r.get("text", "")) for r in reviews]
-    if nim_key:
-        from openai import OpenAI
-        nim_client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=nim_key)
-        embed_model_name = os.environ.get("NIM_EMBED_MODEL", "baai/bge-m3")
-        embeddings = []
-        batch_size = 50
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            resp = nim_client.embeddings.create(model=embed_model_name, input=batch)
-            embeddings.extend([d.embedding for d in resp.data])
-            print(f"  Embedded {min(i + batch_size, len(texts))}/{len(texts)} reviews")
-    else:
         try:
             from fastembed import TextEmbedding
             embed_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
@@ -325,9 +315,6 @@ def _ingest_qdrant_cloud():
             print("[ERROR] No embedding source available. Set NVIDIA_NIM_API_KEY or install fastembed.")
             return False
 
-    texts = [r.get("comment", r.get("text", "")) for r in reviews]
-    embeddings = list(embed_model.embed(texts))
-
     points = []
     for review, embedding in zip(reviews, embeddings):
         text = review.get("comment", review.get("text", ""))
@@ -335,7 +322,7 @@ def _ingest_qdrant_cloud():
             continue
         points.append(PointStruct(
             id=review.get("review_id", str(uuid.uuid4())),
-            vector=embedding.tolist(),
+            vector=embedding,
             payload={
                 "text": text,
                 "review_id": review.get("review_id", ""),

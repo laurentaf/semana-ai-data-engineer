@@ -1,28 +1,30 @@
 services:
-  - type: web
-    name: shopagent
-    runtime: python
-    buildCommand: pip install -r src/requirements-deploy.txt
-    startCommand: chainlit run src/day4/chainlit_lite.py --host 0.0.0.0 --port ${PORT:-8000}
-    envVars:
-      - key: ENVIRONMENT
-        value: cloud
-      - key: PYTHONPATH
-        value: /opt/render/project/src
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: NVIDIA_NIM_API_KEY
-        sync: false
-      - key: CREWAI_LLM
-        value: nim/nvidia/nemotron-mini-4b-instruct
-      - key: QDRANT_CLOUD_URL
-        sync: false
-      - key: QDRANT_CLOUD_API_KEY
-        sync: false
-      - key: QDRANT_COLLECTION
-        value: shopagent_reviews
-    plan: free
+- type: web
+  name: shopagent
+  runtime: python
+  buildCommand: pip install -r src/requirements-deploy.txt
+  startCommand: chainlit run src/day4/chainlit_lite.py --host 0.0.0.0 --port ${PORT:-8000}
+  envVars:
+  - key: ENVIRONMENT
+    value: cloud
+  - key: PYTHONPATH
+    value: /opt/render/project/src
+  - key: NIM_LEDGER_MODEL
+    value: meta/llama-3.1-70b-instruct
+  - key: CREWAI_LLM
+    value: nim/meta/llama-3.1-70b-instruct
+  - key: SUPABASE_URL
+    sync: false
+  - key: SUPABASE_KEY
+    sync: false
+  - key: SUPABASE_SERVICE_ROLE_KEY
+    sync: false
+  - key: NVIDIA_NIM_API_KEY
+    sync: false
+  - key: QDRANT_CLOUD_URL
+    sync: false
+  - key: QDRANT_CLOUD_API_KEY
+    sync: false
+  - key: QDRANT_COLLECTION
+    value: shopagent_reviews
+  plan: free
