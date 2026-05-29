@@ -39,7 +39,7 @@ def _get_sb_rest_client():
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "nvidia/nemotron-mini-4b-instruct")
-NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "baai/bge-m3")
+NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
 
 ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
 
@@ -256,7 +256,11 @@ def _get_embedding(text: str) -> list[float]:
     if not NIM_API_KEY:
         raise RuntimeError("NVIDIA_NIM_API_KEY required for embedding")
     client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
-    resp = client.embeddings.create(model=NIM_EMBED_MODEL, input=[text])
+    resp = client.embeddings.create(
+        model=NIM_EMBED_MODEL,
+        input=[text],
+        extra_body={"input_type": "query"},
+    )
     return resp.data[0].embedding
 
 
