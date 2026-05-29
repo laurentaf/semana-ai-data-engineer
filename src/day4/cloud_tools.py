@@ -39,6 +39,7 @@ def _get_sb_rest_client():
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "meta/llama-3.1-70b-instruct")
+NIM_ROUTER_MODEL = os.environ.get("NIM_ROUTER_MODEL", "nvidia/nemotron-mini-4b-instruct")
 NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
 
 ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
@@ -126,7 +127,7 @@ GROUP BY c.segment, c.state ORDER BY ticket_medio DESC
 """,
     },
     "revenue_by_month": {
-        "keywords": ["evolucao geral", "mes a mes", "month", "temporal", "timeline", "periodo", "trimestre", "receita mes", "faturamento por mes"],
+        "keywords": ["evolucao geral", "mes a mes", "month", "temporal", "timeline", "periodo", "trimestre", "receita mes", "faturamento por mes", "faturamento mensal", "grafico faturamento", "grafico mensal"],
         "sql": """
 SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
 SUM(total) AS faturamento, ROUND(AVG(total), 2) AS ticket_medio
@@ -185,7 +186,7 @@ def _nim_route(question: str) -> str | None:
     try:
         client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
         completion = client.chat.completions.create(
-            model=NIM_MODEL,
+            model=NIM_ROUTER_MODEL,
             messages=[
                 {"role": "system", "content": ROUTER_SYSTEM},
                 {"role": "user", "content": question},
