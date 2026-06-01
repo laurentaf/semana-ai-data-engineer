@@ -34,8 +34,7 @@ REGRAS:
 - SEMPRE use uma ferramenta antes de responder. Nunca invente numeros.
 - Use query_ledger para perguntas sobre metricas, numeros, totais.
 - Use search_memory para perguntas sobre opinioes, reclamacoes, sentimento.
-- Para perguntas que misturam metricas e opinioes, use AMBAS as ferramentas UMA UNICA VEZ cada.
-- NAO chame a mesma ferramenta mais de uma vez. Uma chamada por ferramenta e suficiente.
+- Chame NO MAXIMO UMA ferramenta por vez. Nunca chame duas ferramentas na mesma mensagem.
 - Responda em portugues com dados especificos.
 - Inclua numeros exatos nos seus relatorios.
 - Quando os dados tiverem multiplas linhas/periodos/estados, liste TODOS os resultados em tabela markdown.
@@ -56,6 +55,14 @@ async def start():
     ).send()
 
 
+def _exec_tool(fn_name: str, fn_args: dict) -> str:
+    if fn_name == "query_ledger":
+        return query_ledger(question=fn_args.get("question", ""))
+    elif fn_name == "search_memory":
+        return search_memory(question=fn_args.get("question", ""))
+    return f"Unknown tool: {fn_name}"
+
+
 @cl.on_message
 async def main(message: cl.Message):
     if not NIM_API_KEY:
@@ -71,8 +78,9 @@ async def main(message: cl.Message):
 
     tools = get_tools_definitions()
 
-    # Agentic loop: call tools until the LLM stops requesting them
-    max_iterations = 3
+    # Agentic loop: NIM only supports single tool-call per turn,
+    # so we process one tool per iteration.
+    max_iterations = 4
     for _ in range(max_iterations):
         try:
             completion = client.chat.completions.create(
@@ -87,50 +95,51 @@ async def main(message: cl.Message):
             await cl.Message(content=f"Erro ao chamar NIM: {exc}").send()
             return
 
-        choice = completion.choices[0]
-        msg = choice.message
-
-        # Add assistant message to conversation
+        msg = completion.choices[0].message
         messages.append(msg.model_dump())
 
-        # If no tool calls, we're done
         if not msg.tool_calls:
+            # No tool calls — final answer
             await cl.Message(content=msg.content or "").send()
             return
 
-        # Execute each tool call
-        for tool_call in msg.tool_calls:
-            fn_name = tool_call.function.name
-            fn_args = json.loads(tool_call.function.arguments)
+        # Process only the FIRST tool call (NIM single-tool limitation)
+        tool_call = msg.tool_calls[0]
+        fn_name = tool_call.function.name
+        fn_args = json.loads(tool_call.function.arguments)
 
-            step = cl.Step(name=fn_name, type="tool")
-            await step.__aenter__()
-            step.input = json.dumps(fn_args, ensure_ascii=False)
+        step = cl.Step(name=fn_name, type="tool")
+        await step.__aenter__()
+        step.input = json.dumps(fn_args, ensure_ascii=False)
 
-            try:
-                if fn_name == "query_ledger":
-                    result = query_ledger(question=fn_args.get("question", ""))
-                elif fn_name == "search_memory":
-                    result = search_memory(question=fn_args.get("question", ""))
-                else:
-                    result = f"Unknown tool: {fn_name}"
-            except Exception as exc:
-                result = f"Error: {exc}"
+        try:
+            result = _exec_tool(fn_name, fn_args)
+        except Exception as exc:
+            result = f"Error: {exc}"
 
-            step.output = result[:500]
-            await step.__aexit__(None, None, None)
+        step.output = result[:500]
+        await step.__aexit__(None, None, None)
 
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": result,
+        })
+
+        # If model requested multiple tool calls, inject a hint to call the next one
+        if len(msg.tool_calls) > 1:
+            remaining = [tc.function.name for tc in msg.tool_calls[1:]]
             messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
+                "role": "user",
+                "content": f"Voce tambem precisava chamar: {', '.join(remaining)}. Chame agora se ainda for necessario.",
             })
 
-    # If we hit max iterations, ask NIM for a final summary
+    # If we hit max iterations, force a final answer
+    messages.append({"role": "user", "content": "Resuma os resultados encontrados em portugues em tabela markdown."})
     try:
         completion = client.chat.completions.create(
             model=NIM_MODEL,
-            messages=messages + [{"role": "user", "content": "Resuma os resultados encontrados em portugues em tabela markdown."}],
+            messages=messages,
             temperature=0.1,
             max_tokens=1024,
             timeout=120,
