@@ -48,7 +48,25 @@ REGRAS:
 
 def _wants_chart(text: str) -> bool:
     words = _normalize(text)
-    return any(kw in words for kw in ["grafico", "chart", "plot", "curva", "linha do tempo"])
+    return any(kw in words for kw in [
+        "grafico", "chart", "plot", "curva", "linha do tempo",
+        "evolucao", "mes a mes", "comparacao", "mensal", "timeline",
+    ])
+
+
+def _should_auto_chart(tool_result: str) -> bool:
+    """Auto-detect if data is chartable (time-series, by state/category) — always show chart."""
+    json_match = re.search(r"\[.*\]", tool_result, re.DOTALL)
+    if not json_match:
+        return False
+    try:
+        rows = json.loads(json_match.group())
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(rows, list) or len(rows) < 2:
+        return False
+    first = rows[0]
+    return any(k in first for k in ("mes", "state", "category", "status", "payment", "segment"))
 
 
 def _normalize(text: str) -> str:
@@ -169,7 +187,7 @@ async def main(message: cl.Message):
     ledger_results: list[str] = []
     tool_call_count = 0
 
-    max_tool_calls = 2
+    max_tool_calls = 1
     for iteration in range(max_tool_calls + 3):
         include_tools = tool_call_count < max_tool_calls
         try:
@@ -195,10 +213,13 @@ async def main(message: cl.Message):
 
         if not msg.tool_calls:
             await cl.Message(content=msg.content or "").send()
-            if wants_chart and ledger_results:
-                chart = _build_chart_from_tool_result(ledger_results[-1])
-                if chart:
-                    await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
+            # Show chart if user asked OR data is chartable
+            if ledger_results:
+                last_result = ledger_results[-1]
+                if wants_chart or _should_auto_chart(last_result):
+                    chart = _build_chart_from_tool_result(last_result)
+                    if chart:
+                        await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
             return
 
         if not include_tools:
@@ -247,9 +268,11 @@ async def main(message: cl.Message):
             timeout=60,
         )
         await cl.Message(content=completion.choices[0].message.content or "").send()
-        if wants_chart and ledger_results:
-            chart = _build_chart_from_tool_result(ledger_results[-1])
-            if chart:
-                await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
+        if ledger_results:
+            last_result = ledger_results[-1]
+            if wants_chart or _should_auto_chart(last_result):
+                chart = _build_chart_from_tool_result(last_result)
+                if chart:
+                    await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
     except Exception as exc:
         await cl.Message(content=f"Erro: {exc}").send()
