@@ -167,24 +167,31 @@ async def main(message: cl.Message):
 
     tools = get_tools_definitions()
     ledger_results: list[str] = []
+    tool_call_count = 0
 
-    max_iterations = 4
-    for _ in range(max_iterations):
+    max_tool_calls = 2
+    for iteration in range(max_tool_calls + 3):
+        include_tools = tool_call_count < max_tool_calls
         try:
-            completion = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=messages,
-                tools=tools,
-                temperature=0.1,
-                max_tokens=1024,
-                timeout=60,
-            )
+            kwargs = {
+                "model": LLM_MODEL,
+                "messages": messages,
+                "temperature": 0.1,
+                "max_tokens": 1024,
+                "timeout": 60,
+            }
+            if include_tools:
+                kwargs["tools"] = tools
+            completion = client.chat.completions.create(**kwargs)
         except Exception as exc:
             await cl.Message(content=f"Erro: {exc}").send()
             return
 
         msg = completion.choices[0].message
-        messages.append(msg.model_dump())
+        msg_dict = msg.model_dump()
+        if msg_dict.get("content") is None:
+            msg_dict["content"] = ""
+        messages.append(msg_dict)
 
         if not msg.tool_calls:
             await cl.Message(content=msg.content or "").send()
@@ -193,6 +200,10 @@ async def main(message: cl.Message):
                 if chart:
                     await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
             return
+
+        if not include_tools:
+            # No more tool calls allowed — force text answer
+            break
 
         # Process first tool call
         tool_call = msg.tool_calls[0]
@@ -214,22 +225,19 @@ async def main(message: cl.Message):
         if fn_name == "query_ledger":
             ledger_results.append(result)
 
+        tool_call_count += 1
+
         messages.append({
             "role": "tool",
             "tool_call_id": tool_call.id,
             "content": result,
         })
 
-        # If model requested multiple tool calls, hint to call next
-        if len(msg.tool_calls) > 1:
-            remaining = [tc.function.name for tc in msg.tool_calls[1:]]
-            messages.append({
-                "role": "user",
-                "content": f"Voce tambem precisava chamar: {', '.join(remaining)}. Chame agora se ainda for necessario.",
-            })
-
-    # Force final answer if max iterations hit
-    messages.append({"role": "user", "content": "Resuma os resultados em portugues em tabela markdown."})
+    # Force final answer: no tools, explicit prompt
+    messages.append({
+        "role": "user",
+        "content": "Agora formate os resultados acima em tabela markdown para o usuario. NAO chame mais ferramentas.",
+    })
     try:
         completion = client.chat.completions.create(
             model=LLM_MODEL,
