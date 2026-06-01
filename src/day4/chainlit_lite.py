@@ -1,7 +1,9 @@
-"""ShopAgent Lite — Single-agent Chainlit app using NIM directly (no crewai).
+"""ShopAgent Lite — Single-agent Chainlit app (no crewai).
 
 Built for Render free-tier deployment (512MB RAM).
-Uses NVIDIA NIM llama-3.1-70b as LLM with tool calling + Plotly charts.
+LLM: OpenRouter owl-alpha (free, tool calling, Portuguese)
+Embeddings: NIM nv-embedqa-e5-v5 (for Qdrant search)
+Charts: Plotly (auto-render on "grafico" keywords)
 """
 
 import json
@@ -21,9 +23,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from day4.cloud_tools import query_ledger, search_memory, get_tools_definitions
 
-NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
-NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
-NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "meta/llama-3.1-70b-instruct")
+# LLM via OpenRouter (free, stable Portuguese + tool calling)
+OPENROUTER_API_KEY = os.environ.get("OPEN_ROUTER_API_KEY", "")
+LLM_MODEL = os.environ.get("LLM_MODEL", "openrouter/owl-alpha")
+LLM_BASE_URL = "https://openrouter.ai/api/v1"
 
 SYSTEM_PROMPT = """Voce e o ShopAgent, um assistente de analise de e-commerce.
 
@@ -56,8 +59,6 @@ def _normalize(text: str) -> str:
 
 def _build_chart_from_tool_result(tool_result: str) -> dict | None:
     """Parse query_ledger result and build a Plotly chart if data is chartable."""
-    # Extract the JSON rows from the tool result
-    # Format: "Query: xxx\n\n[{...}, {...}]"
     json_match = re.search(r"\[.*\]", tool_result, re.DOTALL)
     if not json_match:
         return None
@@ -72,10 +73,8 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
 
     first = rows[0]
 
-    # Detect chart type based on data shape
     import plotly.graph_objects as go
 
-    # Monthly timeline (has "mes" column)
     if "mes" in first:
         x = [r["mes"] for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
@@ -83,14 +82,11 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
         fig = go.Figure(go.Bar(x=x, y=y, marker_color="#4f46e5"))
         fig.update_layout(
             title=f"{y_key.capitalize()} por Mes",
-            xaxis_title="Mes",
-            yaxis_title=y_key.capitalize(),
-            template="plotly_white",
-            height=400,
+            xaxis_title="Mes", yaxis_title=y_key.capitalize(),
+            template="plotly_white", height=400,
         )
         return fig.to_dict()
 
-    # By state (has "state" column)
     if "state" in first:
         x = [r["state"] for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
@@ -98,14 +94,11 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
         fig = go.Figure(go.Bar(x=x, y=y, marker_color="#4f46e5"))
         fig.update_layout(
             title=f"{y_key.capitalize()} por Estado",
-            xaxis_title="Estado",
-            yaxis_title=y_key.capitalize(),
-            template="plotly_white",
-            height=400,
+            xaxis_title="Estado", yaxis_title=y_key.capitalize(),
+            template="plotly_white", height=400,
         )
         return fig.to_dict()
 
-    # By category
     if "category" in first:
         x = [r["category"] for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
@@ -113,14 +106,11 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
         fig = go.Figure(go.Bar(x=x, y=y, marker_color="#4f46e5"))
         fig.update_layout(
             title=f"{y_key.capitalize()} por Categoria",
-            xaxis_title="Categoria",
-            yaxis_title=y_key.capitalize(),
-            template="plotly_white",
-            height=400,
+            xaxis_title="Categoria", yaxis_title=y_key.capitalize(),
+            template="plotly_white", height=400,
         )
         return fig.to_dict()
 
-    # By status / payment (pie chart)
     status_key = None
     for k in ("status", "payment", "segment"):
         if k in first:
@@ -132,8 +122,7 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
         fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.4))
         fig.update_layout(
             title=f"Distribuicao por {status_key.capitalize()}",
-            template="plotly_white",
-            height=400,
+            template="plotly_white", height=400,
         )
         return fig.to_dict()
 
@@ -143,10 +132,11 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
 @cl.on_chat_start
 async def start():
     env_mode = os.environ.get("ENVIRONMENT", "local").upper()
+    llm_short = LLM_MODEL.split("/")[-1]
     await cl.Message(
         content=(
             f"**ShopAgent Lite** — E-Commerce Analytics\n\n"
-            f"Modo: **{env_mode}** | LLM: **NIM {NIM_MODEL.split('/')[-1]}**\n\n"
+            f"Modo: **{env_mode}** | LLM: **{llm_short}**\n\n"
             f"Pergunte sobre faturamento, pedidos, sentimento de clientes, etc.\n"
             f"Ex: *Qual o faturamento por estado?* ou *Grafico de vendas mensais*"
         )
@@ -163,11 +153,11 @@ def _exec_tool(fn_name: str, fn_args: dict) -> str:
 
 @cl.on_message
 async def main(message: cl.Message):
-    if not NIM_API_KEY:
-        await cl.Message(content="Erro: NVIDIA_NIM_API_KEY nao configurada.").send()
+    if not OPENROUTER_API_KEY:
+        await cl.Message(content="Erro: OPEN_ROUTER_API_KEY nao configurada.").send()
         return
 
-    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
+    client = OpenAI(base_url=LLM_BASE_URL, api_key=OPENROUTER_API_KEY)
     wants_chart = _wants_chart(message.content)
 
     messages = [
@@ -176,41 +166,35 @@ async def main(message: cl.Message):
     ]
 
     tools = get_tools_definitions()
-
-    # Collect query_ledger results for chart building
     ledger_results: list[str] = []
 
-    # Agentic loop: NIM only supports single tool-call per turn,
-    # so we process one tool per iteration.
     max_iterations = 4
     for _ in range(max_iterations):
         try:
             completion = client.chat.completions.create(
-                model=NIM_MODEL,
+                model=LLM_MODEL,
                 messages=messages,
                 tools=tools,
                 temperature=0.1,
                 max_tokens=1024,
-                timeout=120,
+                timeout=60,
             )
         except Exception as exc:
-            await cl.Message(content=f"Erro ao chamar NIM: {exc}").send()
+            await cl.Message(content=f"Erro: {exc}").send()
             return
 
         msg = completion.choices[0].message
         messages.append(msg.model_dump())
 
         if not msg.tool_calls:
-            # No tool calls — final answer
             await cl.Message(content=msg.content or "").send()
-            # Append chart if requested and we have ledger data
             if wants_chart and ledger_results:
                 chart = _build_chart_from_tool_result(ledger_results[-1])
                 if chart:
                     await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
             return
 
-        # Process only the FIRST tool call (NIM single-tool limitation)
+        # Process first tool call
         tool_call = msg.tool_calls[0]
         fn_name = tool_call.function.name
         fn_args = json.loads(tool_call.function.arguments)
@@ -236,7 +220,7 @@ async def main(message: cl.Message):
             "content": result,
         })
 
-        # If model requested multiple tool calls, inject a hint to call the next one
+        # If model requested multiple tool calls, hint to call next
         if len(msg.tool_calls) > 1:
             remaining = [tc.function.name for tc in msg.tool_calls[1:]]
             messages.append({
@@ -244,15 +228,15 @@ async def main(message: cl.Message):
                 "content": f"Voce tambem precisava chamar: {', '.join(remaining)}. Chame agora se ainda for necessario.",
             })
 
-    # If we hit max iterations, force a final answer
-    messages.append({"role": "user", "content": "Resuma os resultados encontrados em portugues em tabela markdown."})
+    # Force final answer if max iterations hit
+    messages.append({"role": "user", "content": "Resuma os resultados em portugues em tabela markdown."})
     try:
         completion = client.chat.completions.create(
-            model=NIM_MODEL,
+            model=LLM_MODEL,
             messages=messages,
             temperature=0.1,
             max_tokens=1024,
-            timeout=120,
+            timeout=60,
         )
         await cl.Message(content=completion.choices[0].message.content or "").send()
         if wants_chart and ledger_results:

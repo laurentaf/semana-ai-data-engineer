@@ -9,17 +9,17 @@ services:
     value: cloud
   - key: PYTHONPATH
     value: /opt/render/project/src
-  - key: NIM_LEDGER_MODEL
-    value: meta/llama-3.1-70b-instruct
-  - key: CREWAI_LLM
-    value: nim/meta/llama-3.1-70b-instruct
+  - key: LLM_MODEL
+    value: openrouter/owl-alpha
+  - key: OPEN_ROUTER_API_KEY
+    sync: false
+  - key: NVIDIA_NIM_API_KEY
+    sync: false
   - key: SUPABASE_URL
     sync: false
   - key: SUPABASE_KEY
     sync: false
   - key: SUPABASE_SERVICE_ROLE_KEY
-    sync: false
-  - key: NVIDIA_NIM_API_KEY
     sync: false
   - key: QDRANT_CLOUD_URL
     sync: false
