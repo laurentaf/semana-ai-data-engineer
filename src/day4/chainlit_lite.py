@@ -38,8 +38,9 @@ REGRAS:
 - Chame NO MAXIMO UMA ferramenta por vez. Nunca chame duas ferramentas na mesma mensagem.
 - Responda em portugues com dados especificos.
 - Inclua numeros exatos nos seus relatorios.
-- Quando os dados tiverem multiplas linhas/periodos/estados, liste TODOS os resultados em tabela markdown.
-- NAO resuma dados mensais em um unico total. Liste cada periodo separadamente."""
+- Quando os dados tiverem multiplas linhas/periodos/estados, formate em TABELA MARKDOWN com colunas |---|.
+- NAO resuma dados mensais em um unico total. Liste cada periodo separadamente.
+- NAO repita os dados brutos em JSON. Formate como tabela markdown legivel para o usuario."""
 
 
 def _wants_chart(text: str) -> bool:
