@@ -7,6 +7,7 @@ Charts: Plotly (auto-render for chartable data)
 Memory: Last 5 exchanges per session
 """
 
+import asyncio
 import json
 import os
 import re
@@ -174,6 +175,19 @@ async def _send_chart(ledger_results: list[str], wants_chart: bool):
             ).send()
 
 
+async def _llm_create(client: OpenAI, max_retries: int = 3, **kwargs) -> object:
+    """Call OpenAI chat completion with retry on transient 400/429/503 errors."""
+    for attempt in range(max_retries):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            is_retryable = any(s in str(exc).lower() for s in ["400", "429", "503", "overloaded", "rate limit", "provider returned error"])
+            if is_retryable and attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)  # 1s, 2s, 4s
+                continue
+            raise
+
+
 @cl.on_chat_start
 async def start():
     env_mode = os.environ.get("ENVIRONMENT", "local").upper()
@@ -241,7 +255,7 @@ async def main(message: cl.Message):
             }
             if include_tools:
                 kwargs["tools"] = tools
-            completion = client.chat.completions.create(**kwargs)
+            completion = await _llm_create(client, **kwargs)
         except Exception as exc:
             await cl.Message(content=f"Erro: {exc}").send()
             return
@@ -298,7 +312,8 @@ async def main(message: cl.Message):
         "content": "Agora formate os resultados acima em tabela markdown para o usuario. NAO chame mais ferramentas.",
     })
     try:
-        completion = client.chat.completions.create(
+        completion = await _llm_create(
+            client,
             model=LLM_MODEL,
             messages=messages,
             temperature=0.1,
