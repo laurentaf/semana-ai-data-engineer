@@ -52,12 +52,19 @@ REGRAS:
 - SEMPRE use uma ferramenta antes de responder. Nunca invente numeros.
 - Use query_ledger para perguntas sobre metricas, numeros, totais.
 - Use search_memory para perguntas sobre opinioes, reclamacoes, sentimento.
+- Se a pergunta cruza dados numericos com opinioes, chame as DUAS ferramentas em sequencia (uma por vez).
 - Chame NO MAXIMO UMA ferramenta por vez. Nunca chame duas ferramentas na mesma mensagem.
+- Se ja tem dados suficientes para responder, NAO chame mais ferramentas. Responda direto.
 - Responda em portugues com dados especificos.
 - Inclua numeros exatos nos seus relatorios.
 - Quando os dados tiverem multiplas linhas/periodos/estados, formate em TABELA MARKDOWN com colunas |---|.
 - NAO resuma dados mensais em um unico total. Liste cada periodo separadamente.
-- NAO repita os dados brutos em JSON. Formate como tabela markdown legivel para o usuario."""
+- NAO repita os dados brutos em JSON. Formate como tabela markdown legivel para o usuario.
+
+LIMITACOES (guiderails):
+- Voce so conhece os dados disponiveis nas ferramentas. Se a pergunta pede um dado que nao existe nas queries (ex: custo deCompra, margem de lucro, desconto, custo logistico, imposto), diga claramente que esse dado NAO esta disponivel no sistema. NAO invente nem estime valores.
+- Se uma query retorna dados parciais, apresente o que tem e diga o que falta.
+- Nunca faca calculos com dados inventados. So calcule com numeros retornados pelas ferramentas."""
 
 
 def _wants_chart(text: str) -> bool:
@@ -241,10 +248,10 @@ async def main(message: cl.Message):
     tools = get_tools_definitions()
     ledger_results: list[str] = []
     tool_call_count = 0
+    MAX_TOOL_CALLS = 3
 
-    max_tool_calls = 1
-    for iteration in range(max_tool_calls + 3):
-        include_tools = tool_call_count < max_tool_calls
+    for iteration in range(MAX_TOOL_CALLS + 3):
+        include_tools = tool_call_count < MAX_TOOL_CALLS
         try:
             kwargs = {
                 "model": LLM_MODEL,
@@ -269,7 +276,6 @@ async def main(message: cl.Message):
         if not msg.tool_calls:
             await cl.Message(content=msg.content or "").send()
             await _send_chart(ledger_results, wants_chart)
-            # Save to history (user + assistant only, no tool calls)
             history.append({"role": "user", "content": message.content})
             history.append({"role": "assistant", "content": msg.content or ""})
             cl.user_session.set("history", _trim_history(history))
@@ -306,6 +312,10 @@ async def main(message: cl.Message):
             "content": result,
         })
 
+        # After all tools, force LLM to produce final text (no more tools)
+        if tool_call_count >= MAX_TOOL_CALLS:
+            messages.append({"role": "user", "content": "Agora responda em tabela markdown. NAO chame mais ferramentas."})
+
     # Force final answer: no tools, explicit prompt
     messages.append({
         "role": "user",
@@ -323,7 +333,6 @@ async def main(message: cl.Message):
         final_text = completion.choices[0].message.content or ""
         await cl.Message(content=final_text).send()
         await _send_chart(ledger_results, wants_chart)
-        # Save to history
         history.append({"role": "user", "content": message.content})
         history.append({"role": "assistant", "content": final_text})
         cl.user_session.set("history", _trim_history(history))
