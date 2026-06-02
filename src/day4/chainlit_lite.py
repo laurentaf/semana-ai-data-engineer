@@ -3,12 +3,14 @@
 Built for Render free-tier deployment (512MB RAM).
 LLM: OpenRouter owl-alpha (free, tool calling, Portuguese)
 Embeddings: NIM nv-embedqa-e5-v5 (for Qdrant search)
-Charts: Plotly (auto-render on "grafico" keywords)
+Charts: Plotly (auto-render for chartable data)
+Memory: Last 5 exchanges per session
 """
 
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -23,10 +25,21 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from day4.cloud_tools import query_ledger, search_memory, get_tools_definitions
 
+# Build version from git short SHA (for deploy tracking)
+try:
+    _build = subprocess.check_output(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=PROJECT_ROOT, stderr=subprocess.DEVNULL,
+    ).decode().strip()
+except Exception:
+    _build = os.environ.get("RENDER_GIT_COMMIT", "dev")[:7]
+
 # LLM via OpenRouter (free, stable Portuguese + tool calling)
 OPENROUTER_API_KEY = os.environ.get("OPEN_ROUTER_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "openrouter/owl-alpha")
 LLM_BASE_URL = "https://openrouter.ai/api/v1"
+
+MAX_HISTORY = 5  # max past exchanges to keep in conversation memory
 
 SYSTEM_PROMPT = """Voce e o ShopAgent, um assistente de analise de e-commerce.
 
@@ -55,7 +68,7 @@ def _wants_chart(text: str) -> bool:
 
 
 def _should_auto_chart(tool_result: str) -> bool:
-    """Auto-detect if data is chartable (time-series, by state/category) — always show chart."""
+    """Auto-detect if data is chartable (time-series, by state/category) — show chart."""
     json_match = re.search(r"\[.*\]", tool_result, re.DOTALL)
     if not json_match:
         return False
@@ -75,8 +88,10 @@ def _normalize(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
-def _build_chart_from_tool_result(tool_result: str) -> dict | None:
-    """Parse query_ledger result and build a Plotly chart if data is chartable."""
+def _build_chart_from_tool_result(tool_result: str):
+    """Parse query_ledger result and build a Plotly Figure if data is chartable."""
+    import plotly.graph_objects as go
+
     json_match = re.search(r"\[.*\]", tool_result, re.DOTALL)
     if not json_match:
         return None
@@ -91,8 +106,6 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
 
     first = rows[0]
 
-    import plotly.graph_objects as go
-
     if "mes" in first:
         x = [r["mes"] for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
@@ -103,7 +116,7 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
             xaxis_title="Mes", yaxis_title=y_key.capitalize(),
             template="plotly_white", height=400,
         )
-        return fig.to_dict()
+        return fig
 
     if "state" in first:
         x = [r["state"] for r in rows]
@@ -115,7 +128,7 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
             xaxis_title="Estado", yaxis_title=y_key.capitalize(),
             template="plotly_white", height=400,
         )
-        return fig.to_dict()
+        return fig
 
     if "category" in first:
         x = [r["category"] for r in rows]
@@ -127,7 +140,7 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
             xaxis_title="Categoria", yaxis_title=y_key.capitalize(),
             template="plotly_white", height=400,
         )
-        return fig.to_dict()
+        return fig
 
     status_key = None
     for k in ("status", "payment", "segment"):
@@ -142,19 +155,34 @@ def _build_chart_from_tool_result(tool_result: str) -> dict | None:
             title=f"Distribuicao por {status_key.capitalize()}",
             template="plotly_white", height=400,
         )
-        return fig.to_dict()
+        return fig
 
     return None
+
+
+async def _send_chart(ledger_results: list[str], wants_chart: bool):
+    """Build and send Plotly chart if data is chartable."""
+    if not ledger_results:
+        return
+    last_result = ledger_results[-1]
+    if wants_chart or _should_auto_chart(last_result):
+        fig = _build_chart_from_tool_result(last_result)
+        if fig:
+            await cl.Message(
+                content="",
+                elements=[cl.Plotly(name="chart", figure=fig, display="inline")],
+            ).send()
 
 
 @cl.on_chat_start
 async def start():
     env_mode = os.environ.get("ENVIRONMENT", "local").upper()
     llm_short = LLM_MODEL.split("/")[-1]
+    cl.user_session.set("history", [])
     await cl.Message(
         content=(
-            f"**ShopAgent Lite** — E-Commerce Analytics\n\n"
-            f"Modo: **{env_mode}** | LLM: **{llm_short}**\n\n"
+            f"**ShopAgent Lite v{_build}** — E-Commerce Analytics\n\n"
+            f"Modo: **{env_mode}** | LLM: **{llm_short}** | Build: `{_build}`\n\n"
             f"Pergunte sobre faturamento, pedidos, sentimento de clientes, etc.\n"
             f"Ex: *Qual o faturamento por estado?* ou *Grafico de vendas mensais*"
         )
@@ -169,17 +197,30 @@ def _exec_tool(fn_name: str, fn_args: dict) -> str:
     return f"Unknown tool: {fn_name}"
 
 
+def _trim_history(history: list[dict], max_exchanges: int = MAX_HISTORY) -> list[dict]:
+    """Keep only the last N user+assistant exchange pairs."""
+    # Count exchanges (user messages as anchors)
+    user_indices = [i for i, m in enumerate(history) if m.get("role") == "user"]
+    if len(user_indices) <= max_exchanges:
+        return history
+    start = user_indices[-max_exchanges]
+    return history[start:]
+
+
 @cl.on_message
 async def main(message: cl.Message):
     if not OPENROUTER_API_KEY:
         await cl.Message(content="Erro: OPEN_ROUTER_API_KEY nao configurada.").send()
         return
 
+    # Load conversation history
+    history: list[dict] = cl.user_session.get("history", [])
+    history = _trim_history(history)
+
     client = OpenAI(base_url=LLM_BASE_URL, api_key=OPENROUTER_API_KEY)
     wants_chart = _wants_chart(message.content)
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
         {"role": "user", "content": message.content},
     ]
 
@@ -213,17 +254,14 @@ async def main(message: cl.Message):
 
         if not msg.tool_calls:
             await cl.Message(content=msg.content or "").send()
-            # Show chart if user asked OR data is chartable
-            if ledger_results:
-                last_result = ledger_results[-1]
-                if wants_chart or _should_auto_chart(last_result):
-                    chart = _build_chart_from_tool_result(last_result)
-                    if chart:
-                        await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
+            await _send_chart(ledger_results, wants_chart)
+            # Save to history (user + assistant only, no tool calls)
+            history.append({"role": "user", "content": message.content})
+            history.append({"role": "assistant", "content": msg.content or ""})
+            cl.user_session.set("history", _trim_history(history))
             return
 
         if not include_tools:
-            # No more tool calls allowed — force text answer
             break
 
         # Process first tool call
@@ -267,12 +305,12 @@ async def main(message: cl.Message):
             max_tokens=1024,
             timeout=60,
         )
-        await cl.Message(content=completion.choices[0].message.content or "").send()
-        if ledger_results:
-            last_result = ledger_results[-1]
-            if wants_chart or _should_auto_chart(last_result):
-                chart = _build_chart_from_tool_result(last_result)
-                if chart:
-                    await cl.Message(content="", elements=[cl.Plotly(name="chart", figure=chart)]).send()
+        final_text = completion.choices[0].message.content or ""
+        await cl.Message(content=final_text).send()
+        await _send_chart(ledger_results, wants_chart)
+        # Save to history
+        history.append({"role": "user", "content": message.content})
+        history.append({"role": "assistant", "content": final_text})
+        cl.user_session.set("history", _trim_history(history))
     except Exception as exc:
         await cl.Message(content=f"Erro: {exc}").send()
