@@ -195,7 +195,7 @@ async def start():
     cl.user_session.set("history", [])
     await cl.Message(
         content=(
-            f"**ShopAgent Lite v{_build}** — E-Commerce Analytics\n\n"
+            f"**ShopAgent Lite** — E-Commerce Analytics\n\n"
             f"Modo: **{env_mode}** | LLM: **{llm_short}** | Build: `{_build}`\n\n"
             f"Pergunte sobre faturamento, pedidos, sentimento de clientes, etc.\n"
             f"Ex: *Qual o faturamento por estado?* ou *Grafico de vendas mensais*"
