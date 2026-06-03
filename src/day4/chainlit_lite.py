@@ -48,13 +48,25 @@ Voce tem acesso a 2 ferramentas:
 1. query_ledger — Para dados EXATOS do banco (faturamento, pedidos, ticket medio, etc.)
 2. search_memory — Para OPINIOES e SENTIMENTO dos clientes (reclamacoes, elogios, feedback)
 
+DADOS DISPONIVEIS no query_ledger:
+- revenue_by_month: faturamento, pedidos E ticket_medio por mes (12 meses)
+- revenue_by_state: faturamento e pedidos por estado
+- revenue_by_category: faturamento, pedidos e ticket_medio por categoria
+- revenue_by_month_state: faturamento, pedidos e ticket_medio por mes E estado
+- orders_by_status: pedidos por status
+- payment_distribution: pedidos por forma de pagamento
+- segment_analysis: clientes, pedidos e ticket_medio por segmento
+- top_products: top 10 produtos por faturamento
+
 REGRAS:
 - SEMPRE use uma ferramenta antes de responder. Nunca invente numeros.
-- Use query_ledger para perguntas sobre metricas, numeros, totais.
+- Para perguntas sobre ticket_medio mensal, use revenue_by_month (ja traz ticket_medio).
+- Para perguntas sobre ticket_medio mensal por estado, use revenue_by_month_state.
 - Use search_memory para perguntas sobre opinioes, reclamacoes, sentimento.
-- Se a pergunta cruza dados numericos com opinioes, chame as DUAS ferramentas em sequencia (uma por vez).
+- Se a pergunta cruza dados numericos com opinioes, chame as DUAS ferramentas em sequencia.
 - Chame NO MAXIMO UMA ferramenta por vez. Nunca chame duas ferramentas na mesma mensagem.
 - Se ja tem dados suficientes para responder, NAO chame mais ferramentas. Responda direto.
+- Antes de dizer que um dado nao existe, verifique se ele ja esta em uma das queries acima.
 - Responda em portugues com dados especificos.
 - Inclua numeros exatos nos seus relatorios.
 - Quando os dados tiverem multiplas linhas/periodos/estados, formate em TABELA MARKDOWN com colunas |---|.
@@ -62,7 +74,7 @@ REGRAS:
 - NAO repita os dados brutos em JSON. Formate como tabela markdown legivel para o usuario.
 
 LIMITACOES (guiderails):
-- Voce so conhece os dados disponiveis nas ferramentas. Se a pergunta pede um dado que nao existe nas queries (ex: custo deCompra, margem de lucro, desconto, custo logistico, imposto), diga claramente que esse dado NAO esta disponivel no sistema. NAO invente nem estime valores.
+- Voce so conhece os dados disponiveis nas ferramentas. Se a pergunta pede um dado que nao existe em NENHUMA query (ex: custo de compra, margem de lucro, desconto, custo logistico, imposto), diga claramente que esse dado NAO esta disponivel no sistema. NAO invente nem estime valores.
 - Se uma query retorna dados parciais, apresente o que tem e diga o que falta.
 - Nunca faca calculos com dados inventados. So calcule com numeros retornados pelas ferramentas."""
 
@@ -72,7 +84,31 @@ def _wants_chart(text: str) -> bool:
     return any(kw in words for kw in [
         "grafico", "chart", "plot", "curva", "linha do tempo",
         "evolucao", "mes a mes", "comparacao", "mensal", "timeline",
+        "linha",
     ])
+
+
+def _wants_line(text: str) -> bool:
+    words = _normalize(text)
+    return any(kw in words for kw in ["linha", "line", "curva", "evolucao", "timeline"])
+
+
+def _pick_y_key(first: dict, user_msg: str) -> str:
+    """Pick the best Y axis based on what user asked about."""
+    words = _normalize(user_msg)
+    if "ticket" in words and "ticket_medio" in first:
+        return "ticket_medio"
+    if "pedido" in words and "pedidos" in first:
+        return "pedidos"
+    if "faturamento" in words and "faturamento" in first:
+        return "faturamento"
+    # Default: faturamento if available, else first numeric key
+    if "faturamento" in first:
+        return "faturamento"
+    for k in ("pedidos", "ticket_medio", "total", "clientes"):
+        if k in first:
+            return k
+    return list(first.keys())[-1]
 
 
 def _should_auto_chart(tool_result: str) -> bool:
@@ -135,7 +171,7 @@ def _bar_layout(title: str, x_title: str, y_title: str, is_currency: bool) -> di
     return layout
 
 
-def _build_chart_from_tool_result(tool_result: str):
+def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_chart: bool = False):
     """Parse query_ledger result and build a Plotly Figure if data is chartable."""
     import plotly.graph_objects as go
 
@@ -152,29 +188,38 @@ def _build_chart_from_tool_result(tool_result: str):
         return None
 
     first = rows[0]
+    y_key = _pick_y_key(first, user_msg)
+    is_currency = y_key in ("faturamento", "ticket_medio")
 
     if "mes" in first:
         x = [_fmt_month(r["mes"]) for r in rows]
-        y_key = "faturamento" if "faturamento" in first else "pedidos"
         y = [float(r[y_key]) for r in rows]
-        is_currency = y_key == "faturamento"
         text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
-        fig = go.Figure(go.Bar(
-            x=x, y=y, marker_color="#4f46e5",
-            text=text_labels, textposition="outside",
-            textfont=dict(size=11),
-        ))
+
+        if line_chart:
+            fig = go.Figure(go.Scatter(
+                x=x, y=y, mode="lines+markers+text",
+                line=dict(color="#4f46e5", width=2.5),
+                marker=dict(size=8, color="#4f46e5"),
+                text=text_labels, textposition="top center",
+                textfont=dict(size=11),
+            ))
+        else:
+            fig = go.Figure(go.Bar(
+                x=x, y=y, marker_color="#4f46e5",
+                text=text_labels, textposition="outside",
+                textfont=dict(size=11),
+            ))
         fig.update_layout(**_bar_layout(
-            f"{y_key.capitalize()} por Mes", "Mes", y_key.capitalize(), is_currency,
+            f"{y_key.replace('_', ' ').capitalize()} por Mes", "Mes",
+            y_key.replace('_', ' ').capitalize(), is_currency,
         ))
         fig.update_xaxes(tickangle=-45)
         return fig
 
     if "state" in first:
         x = [r["state"] for r in rows]
-        y_key = "faturamento" if "faturamento" in first else "pedidos"
         y = [float(r[y_key]) for r in rows]
-        is_currency = y_key == "faturamento"
         text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
         fig = go.Figure(go.Bar(
             x=x, y=y, marker_color="#4f46e5",
@@ -182,15 +227,14 @@ def _build_chart_from_tool_result(tool_result: str):
             textfont=dict(size=11),
         ))
         fig.update_layout(**_bar_layout(
-            f"{y_key.capitalize()} por Estado", "Estado", y_key.capitalize(), is_currency,
+            f"{y_key.replace('_', ' ').capitalize()} por Estado", "Estado",
+            y_key.replace('_', ' ').capitalize(), is_currency,
         ))
         return fig
 
     if "category" in first:
         x = [r["category"] for r in rows]
-        y_key = "faturamento" if "faturamento" in first else "pedidos"
         y = [float(r[y_key]) for r in rows]
-        is_currency = y_key == "faturamento"
         text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
         fig = go.Figure(go.Bar(
             x=x, y=y, marker_color="#4f46e5",
@@ -198,7 +242,8 @@ def _build_chart_from_tool_result(tool_result: str):
             textfont=dict(size=11),
         ))
         fig.update_layout(**_bar_layout(
-            f"{y_key.capitalize()} por Categoria", "Categoria", y_key.capitalize(), is_currency,
+            f"{y_key.replace('_', ' ').capitalize()} por Categoria", "Categoria",
+            y_key.replace('_', ' ').capitalize(), is_currency,
         ))
         return fig
 
@@ -210,7 +255,7 @@ def _build_chart_from_tool_result(tool_result: str):
     if status_key:
         labels = [r[status_key] for r in rows]
         values = [float(r.get("total", r.get("pedidos", 0))) for r in rows]
-        text_labels = [_fmt_brl(v) if "faturamento" in first else f"{v:,.0f}" for v in values]
+        text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in values]
         fig = go.Figure(go.Pie(
             labels=labels, values=values, hole=0.4,
             text=text_labels, textposition="inside",
@@ -227,13 +272,13 @@ def _build_chart_from_tool_result(tool_result: str):
     return None
 
 
-async def _send_chart(ledger_results: list[str], wants_chart: bool):
+async def _send_chart(ledger_results: list[str], wants_chart: bool, user_msg: str, line_chart: bool):
     """Build and send Plotly chart if data is chartable."""
     if not ledger_results:
         return
     last_result = ledger_results[-1]
     if wants_chart or _should_auto_chart(last_result):
-        fig = _build_chart_from_tool_result(last_result)
+        fig = _build_chart_from_tool_result(last_result, user_msg=user_msg, line_chart=line_chart)
         if fig:
             await cl.Message(
                 content="",
@@ -299,6 +344,7 @@ async def main(message: cl.Message):
 
     client = OpenAI(base_url=LLM_BASE_URL, api_key=OPENROUTER_API_KEY)
     wants_chart = _wants_chart(message.content)
+    line_chart = _wants_line(message.content)
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
         {"role": "user", "content": message.content},
@@ -334,7 +380,7 @@ async def main(message: cl.Message):
 
         if not msg.tool_calls:
             await cl.Message(content=msg.content or "").send()
-            await _send_chart(ledger_results, wants_chart)
+            await _send_chart(ledger_results, wants_chart, message.content, line_chart)
             history.append({"role": "user", "content": message.content})
             history.append({"role": "assistant", "content": msg.content or ""})
             cl.user_session.set("history", _trim_history(history))
@@ -391,7 +437,7 @@ async def main(message: cl.Message):
         )
         final_text = completion.choices[0].message.content or ""
         await cl.Message(content=final_text).send()
-        await _send_chart(ledger_results, wants_chart)
+        await _send_chart(ledger_results, wants_chart, message.content, line_chart)
         history.append({"role": "user", "content": message.content})
         history.append({"role": "assistant", "content": final_text})
         cl.user_session.set("history", _trim_history(history))
