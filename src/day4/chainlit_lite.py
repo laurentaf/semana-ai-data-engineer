@@ -96,6 +96,45 @@ def _normalize(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+def _fmt_brl(val: float) -> str:
+    """Format number as Brazilian currency: R$ 207.750,11"""
+    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _fmt_month(iso: str) -> str:
+    """Convert 2025-06 → Jun/2025 in Portuguese."""
+    months = {
+        "01": "Jan", "02": "Fev", "03": "Mar", "04": "Abr",
+        "05": "Mai", "06": "Jun", "07": "Jul", "08": "Ago",
+        "09": "Set", "10": "Out", "11": "Nov", "12": "Dez",
+    }
+    parts = iso.split("-")
+    if len(parts) == 2 and parts[1] in months:
+        return f"{months[parts[1]]}/{parts[0]}"
+    return iso
+
+
+def _bar_layout(title: str, x_title: str, y_title: str, is_currency: bool) -> dict:
+    """Common layout with BR formatting for all bar charts."""
+    layout = dict(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        template="plotly_white",
+        height=420,
+        margin=dict(l=60, r=30, t=50, b=50),
+        font=dict(family="Inter, sans-serif", size=13),
+    )
+    if is_currency:
+        layout["yaxis"] = dict(
+            tickprefix="R$ ",
+            tickformat=",.",
+            separatethousands=".",
+            decimals=",",
+        )
+    return layout
+
+
 def _build_chart_from_tool_result(tool_result: str):
     """Parse query_ledger result and build a Plotly Figure if data is chartable."""
     import plotly.graph_objects as go
@@ -115,39 +154,52 @@ def _build_chart_from_tool_result(tool_result: str):
     first = rows[0]
 
     if "mes" in first:
-        x = [r["mes"] for r in rows]
+        x = [_fmt_month(r["mes"]) for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
         y = [float(r[y_key]) for r in rows]
-        fig = go.Figure(go.Bar(x=x, y=y, marker_color="#4f46e5"))
-        fig.update_layout(
-            title=f"{y_key.capitalize()} por Mes",
-            xaxis_title="Mes", yaxis_title=y_key.capitalize(),
-            template="plotly_white", height=400,
-        )
+        is_currency = y_key == "faturamento"
+        text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
+        fig = go.Figure(go.Bar(
+            x=x, y=y, marker_color="#4f46e5",
+            text=text_labels, textposition="outside",
+            textfont=dict(size=11),
+        ))
+        fig.update_layout(**_bar_layout(
+            f"{y_key.capitalize()} por Mes", "Mes", y_key.capitalize(), is_currency,
+        ))
+        fig.update_xaxes(tickangle=-45)
         return fig
 
     if "state" in first:
         x = [r["state"] for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
         y = [float(r[y_key]) for r in rows]
-        fig = go.Figure(go.Bar(x=x, y=y, marker_color="#4f46e5"))
-        fig.update_layout(
-            title=f"{y_key.capitalize()} por Estado",
-            xaxis_title="Estado", yaxis_title=y_key.capitalize(),
-            template="plotly_white", height=400,
-        )
+        is_currency = y_key == "faturamento"
+        text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
+        fig = go.Figure(go.Bar(
+            x=x, y=y, marker_color="#4f46e5",
+            text=text_labels, textposition="outside",
+            textfont=dict(size=11),
+        ))
+        fig.update_layout(**_bar_layout(
+            f"{y_key.capitalize()} por Estado", "Estado", y_key.capitalize(), is_currency,
+        ))
         return fig
 
     if "category" in first:
         x = [r["category"] for r in rows]
         y_key = "faturamento" if "faturamento" in first else "pedidos"
         y = [float(r[y_key]) for r in rows]
-        fig = go.Figure(go.Bar(x=x, y=y, marker_color="#4f46e5"))
-        fig.update_layout(
-            title=f"{y_key.capitalize()} por Categoria",
-            xaxis_title="Categoria", yaxis_title=y_key.capitalize(),
-            template="plotly_white", height=400,
-        )
+        is_currency = y_key == "faturamento"
+        text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
+        fig = go.Figure(go.Bar(
+            x=x, y=y, marker_color="#4f46e5",
+            text=text_labels, textposition="outside",
+            textfont=dict(size=11),
+        ))
+        fig.update_layout(**_bar_layout(
+            f"{y_key.capitalize()} por Categoria", "Categoria", y_key.capitalize(), is_currency,
+        ))
         return fig
 
     status_key = None
@@ -158,10 +210,17 @@ def _build_chart_from_tool_result(tool_result: str):
     if status_key:
         labels = [r[status_key] for r in rows]
         values = [float(r.get("total", r.get("pedidos", 0))) for r in rows]
-        fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.4))
+        text_labels = [_fmt_brl(v) if "faturamento" in first else f"{v:,.0f}" for v in values]
+        fig = go.Figure(go.Pie(
+            labels=labels, values=values, hole=0.4,
+            text=text_labels, textposition="inside",
+            textfont=dict(size=13),
+        ))
         fig.update_layout(
-            title=f"Distribuicao por {status_key.capitalize()}",
-            template="plotly_white", height=400,
+            title=dict(text=f"Distribuicao por {status_key.capitalize()}", font=dict(size=16)),
+            template="plotly_white", height=420,
+            font=dict(family="Inter, sans-serif", size=13),
+            margin=dict(l=30, r=30, t=50, b=30),
         )
         return fig
 
