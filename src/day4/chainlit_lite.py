@@ -112,7 +112,7 @@ def _pick_y_key(first: dict, user_msg: str) -> str:
 
 
 def _should_auto_chart(tool_result: str) -> bool:
-    """Auto-detect if data is chartable (time-series, by state/category) — show chart."""
+    """Auto-detect if data is chartable — show chart."""
     json_match = re.search(r"\[.*\]", tool_result, re.DOTALL)
     if not json_match:
         return False
@@ -123,7 +123,13 @@ def _should_auto_chart(tool_result: str) -> bool:
     if not isinstance(rows, list) or len(rows) < 2:
         return False
     first = rows[0]
-    return any(k in first for k in ("mes", "state", "category", "status", "payment", "segment"))
+    known_keys = ("mes", "state", "category", "status", "payment", "segment", "name")
+    if any(k in first for k in known_keys):
+        return True
+    # Generic: has at least one string key + one numeric key
+    has_str = any(isinstance(v, str) for v in first.values())
+    has_num = any(isinstance(v, (int, float)) for v in first.values())
+    return has_str and has_num
 
 
 def _normalize(text: str) -> str:
@@ -267,6 +273,36 @@ def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_cha
             font=dict(family="Inter, sans-serif", size=13),
             margin=dict(l=30, r=30, t=50, b=30),
         )
+        return fig
+
+    # Generic handler: find first string key as label, _pick_y_key for value
+    label_key = None
+    for k, v in first.items():
+        if isinstance(v, str) and k not in (y_key,):
+            label_key = k
+            break
+    if label_key and y_key in first:
+        labels = [r[label_key] for r in rows]
+        y = [float(r[y_key]) for r in rows]
+        text_labels = [_fmt_brl(v) if is_currency else f"{v:,.0f}" for v in y]
+        # Horizontal bar — better for long names (products, etc.)
+        fig = go.Figure(go.Bar(
+            y=labels, x=y, orientation="h", marker_color="#4f46e5",
+            text=text_labels, textposition="outside",
+            textfont=dict(size=11),
+        ))
+        fig.update_layout(
+            title=dict(text=f"{y_key.replace('_', ' ').capitalize()} por {label_key.capitalize()}", font=dict(size=16)),
+            yaxis_title=label_key.capitalize(),
+            xaxis_title=y_key.replace('_', ' ').capitalize(),
+            template="plotly_white", height=max(400, len(rows) * 35),
+            font=dict(family="Inter, sans-serif", size=13),
+            margin=dict(l=160, r=80, t=50, b=50),
+        )
+        if is_currency:
+            fig.update_xaxes(tickprefix="R$ ")
+        fig.update_yaxes(autorange="reversed")
+        return fig
         return fig
 
     return None
