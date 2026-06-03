@@ -352,9 +352,12 @@ async def _llm_create(client: OpenAI, max_retries: int = 3, **kwargs) -> object:
 
 @cl.on_chat_start
 async def start():
+    if cl.user_session.get("started"):
+        return
     env_mode = os.environ.get("ENVIRONMENT", "local").upper()
     llm_short = LLM_MODEL.split("/")[-1]
     cl.user_session.set("history", [])
+    cl.user_session.set("started", True)
     await cl.Message(
         content=(
             f"**ShopAgent Lite** — E-Commerce Analytics\n\n"
@@ -488,9 +491,9 @@ async def main(message: cl.Message):
 
         last_fn_name = fn_name
 
-        # After all tools, force LLM to produce final text (no more tools)
+        # After all tools, force LLM to produce final text
         if tool_call_count >= MAX_TOOL_CALLS:
-            messages.append({"role": "user", "content": "Agora responda em tabela markdown. NAO chame mais ferramentas."})
+            break
 
     # Force final answer: no tools, explicit prompt
     messages.append({
