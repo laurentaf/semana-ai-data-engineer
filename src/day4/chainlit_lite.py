@@ -93,6 +93,21 @@ def _wants_line(text: str) -> bool:
     return any(kw in words for kw in ["linha", "line", "curva", "evolucao", "timeline"])
 
 
+def _needs_both_stores(text: str) -> bool:
+    """Detect if question asks for both numeric data AND opinions/sentiment."""
+    words = _normalize(text)
+    needs_ledger = any(kw in words for kw in [
+        "faturamento", "vendas", "pedidos", "receita", "ticket",
+        "numero", "quantidade", "total", "media",
+    ])
+    needs_memory = any(kw in words for kw in [
+        "reclamacao", "reclama", "opiniao", "sentimento", "feedback",
+        "elogio", "comentario", "review", "critica", "problema",
+        "qualidade", "insatisfacao",
+    ])
+    return needs_ledger and needs_memory
+
+
 def _pick_y_key(first: dict, user_msg: str) -> str:
     """Pick the best Y axis based on what user asked about."""
     words = _normalize(user_msg)
@@ -381,6 +396,7 @@ async def main(message: cl.Message):
     client = OpenAI(base_url=LLM_BASE_URL, api_key=OPENROUTER_API_KEY)
     wants_chart = _wants_chart(message.content)
     line_chart = _wants_line(message.content)
+    needs_both = _needs_both_stores(message.content)
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
         {"role": "user", "content": message.content},
@@ -389,6 +405,7 @@ async def main(message: cl.Message):
     tools = get_tools_definitions()
     ledger_results: list[str] = []
     tool_call_count = 0
+    last_fn_name: str | None = None
     MAX_TOOL_CALLS = 3
 
     for iteration in range(MAX_TOOL_CALLS + 3):
@@ -452,6 +469,24 @@ async def main(message: cl.Message):
             "tool_call_id": tool_call.id,
             "content": result,
         })
+
+        # Hint: if user asked for both data + opinions, encourage the other tool
+        if needs_both and tool_call_count == 1:
+            other = "search_memory" if fn_name == "query_ledger" else "query_ledger"
+            messages.append({
+                "role": "user",
+                "content": f"Agora use {other} para completar a resposta do usuario. NAO repita a chamada anterior.",
+            })
+
+        # Block: same tool called twice in a row — redirect to other or answer
+        if fn_name == last_fn_name and tool_call_count >= 2:
+            other = "search_memory" if fn_name == "query_ledger" else "query_ledger"
+            messages.append({
+                "role": "user",
+                "content": f"Voce ja chamou {fn_name} mais de uma vez. Use {other} se precisa de mais dados, ou responda com o que ja tem.",
+            })
+
+        last_fn_name = fn_name
 
         # After all tools, force LLM to produce final text (no more tools)
         if tool_call_count >= MAX_TOOL_CALLS:
