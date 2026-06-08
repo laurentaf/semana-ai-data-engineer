@@ -352,12 +352,10 @@ async def _llm_create(client: OpenAI, max_retries: int = 3, **kwargs) -> object:
 
 @cl.on_chat_start
 async def start():
-    if cl.user_session.get("started"):
-        return
     env_mode = os.environ.get("ENVIRONMENT", "local").upper()
     llm_short = LLM_MODEL.split("/")[-1]
     cl.user_session.set("history", [])
-    cl.user_session.set("started", True)
+    cl.user_session.set("welcome_shown", True)
     await cl.Message(
         content=(
             f"**ShopAgent Lite** — E-Commerce Analytics\n\n"
@@ -411,6 +409,10 @@ async def main(message: cl.Message):
     last_fn_name: str | None = None
     MAX_TOOL_CALLS = 3
 
+    # Single streaming message for the entire response
+    response_msg = cl.Message(content="")
+    await response_msg.send()
+
     for iteration in range(MAX_TOOL_CALLS + 3):
         include_tools = tool_call_count < MAX_TOOL_CALLS
         try:
@@ -425,7 +427,8 @@ async def main(message: cl.Message):
                 kwargs["tools"] = tools
             completion = await _llm_create(client, **kwargs)
         except Exception as exc:
-            await cl.Message(content=f"Erro: {exc}").send()
+            await response_msg.stream_token(f"\n\nErro: {exc}")
+            await response_msg.update()
             return
 
         msg = completion.choices[0].message
@@ -435,10 +438,12 @@ async def main(message: cl.Message):
         messages.append(msg_dict)
 
         if not msg.tool_calls:
-            await cl.Message(content=msg.content or "").send()
+            if msg.content:
+                await response_msg.stream_token(msg.content)
+                await response_msg.update()
             await _send_chart(ledger_results, wants_chart, message.content, line_chart)
             history.append({"role": "user", "content": message.content})
-            history.append({"role": "assistant", "content": msg.content or ""})
+            history.append({"role": "assistant", "content": response_msg.content or msg.content or ""})
             cl.user_session.set("history", _trim_history(history))
             return
 
@@ -450,17 +455,16 @@ async def main(message: cl.Message):
         fn_name = tool_call.function.name
         fn_args = json.loads(tool_call.function.arguments)
 
-        step = cl.Step(name=fn_name, type="tool")
-        await step.__aenter__()
-        step.input = json.dumps(fn_args, ensure_ascii=False)
+        # Show which tool is being used (stream into the same message)
+        tool_label = {"query_ledger": "Consultando The Ledger (Postgres)",
+                      "search_memory": "Buscando The Memory (Qdrant)"}
+        await response_msg.stream_token(f"\n\n_{tool_label.get(fn_name, fn_name)}..._\n\n")
+        await response_msg.update()
 
         try:
             result = _exec_tool(fn_name, fn_args)
         except Exception as exc:
             result = f"Error: {exc}"
-
-        step.output = result[:500]
-        await step.__aexit__(None, None, None)
 
         if fn_name == "query_ledger":
             ledger_results.append(result)
@@ -510,10 +514,12 @@ async def main(message: cl.Message):
             timeout=60,
         )
         final_text = completion.choices[0].message.content or ""
-        await cl.Message(content=final_text).send()
+        await response_msg.stream_token(final_text)
+        await response_msg.update()
         await _send_chart(ledger_results, wants_chart, message.content, line_chart)
         history.append({"role": "user", "content": message.content})
-        history.append({"role": "assistant", "content": final_text})
+        history.append({"role": "assistant", "content": response_msg.content or final_text})
         cl.user_session.set("history", _trim_history(history))
     except Exception as exc:
-        await cl.Message(content=f"Erro: {exc}").send()
+        await response_msg.stream_token(f"\n\nErro: {exc}")
+        await response_msg.update()
