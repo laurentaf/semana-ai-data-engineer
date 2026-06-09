@@ -185,9 +185,7 @@ def _bar_layout(title: str, x_title: str, y_title: str, is_currency: bool) -> di
     if is_currency:
         layout["yaxis"] = dict(
             tickprefix="R$ ",
-            tickformat=",.",
-            separatethousands=".",
-            decimals=",",
+            tickformat=",.2f",
         )
     return layout
 
@@ -406,7 +404,7 @@ async def main(message: cl.Message):
     tools = get_tools_definitions()
     ledger_results: list[str] = []
     tool_call_count = 0
-    last_fn_name: str | None = None
+    called_tools: set[str] = set()
     MAX_TOOL_CALLS = 3
 
     # Single streaming message for the entire response
@@ -455,16 +453,34 @@ async def main(message: cl.Message):
         fn_name = tool_call.function.name
         fn_args = json.loads(tool_call.function.arguments)
 
-        # Show which tool is being used (stream into the same message)
+        # Prevent calling the same tool twice — redirect to answer or other tool
+        if fn_name in called_tools:
+            other = "search_memory" if fn_name == "query_ledger" else "query_ledger"
+            if other not in called_tools and needs_both:
+                messages.append({
+                    "role": "user",
+                    "content": f"Voce ja chamou {fn_name}. Use {other} se precisa, ou responda com o que ja tem. NAO repita {fn_name}.",
+                })
+            else:
+                break  # All tools already called — force final answer
+            continue
+
+        called_tools.add(fn_name)
+
+        # Show which tool is being used (via cl.Step, hidden from UI by cot=hidden)
         tool_label = {"query_ledger": "Consultando The Ledger (Postgres)",
                       "search_memory": "Buscando The Memory (Qdrant)"}
-        await response_msg.stream_token(f"\n\n_{tool_label.get(fn_name, fn_name)}..._\n\n")
-        await response_msg.update()
+        step = cl.Step(name=tool_label.get(fn_name, fn_name), type="run")
+        await step.__aenter__()
+        step.output = "..."
 
         try:
             result = _exec_tool(fn_name, fn_args)
         except Exception as exc:
             result = f"Error: {exc}"
+
+        step.output = result[:300]
+        await step.__aexit__(None, None, None)
 
         if fn_name == "query_ledger":
             ledger_results.append(result)
@@ -484,16 +500,6 @@ async def main(message: cl.Message):
                 "role": "user",
                 "content": f"Agora use {other} para completar a resposta do usuario. NAO repita a chamada anterior.",
             })
-
-        # Block: same tool called twice in a row — redirect to other or answer
-        if fn_name == last_fn_name and tool_call_count >= 2:
-            other = "search_memory" if fn_name == "query_ledger" else "query_ledger"
-            messages.append({
-                "role": "user",
-                "content": f"Voce ja chamou {fn_name} mais de uma vez. Use {other} se precisa de mais dados, ou responda com o que ja tem.",
-            })
-
-        last_fn_name = fn_name
 
         # After all tools, force LLM to produce final text
         if tool_call_count >= MAX_TOOL_CALLS:
