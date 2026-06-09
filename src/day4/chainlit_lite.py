@@ -350,10 +350,11 @@ async def _llm_create(client: OpenAI, max_retries: int = 3, **kwargs) -> object:
 
 @cl.on_chat_start
 async def start():
+    if cl.user_session.get("history") is not None:
+        return  # Reconnect — don't re-send welcome
     env_mode = os.environ.get("ENVIRONMENT", "local").upper()
     llm_short = LLM_MODEL.split("/")[-1]
     cl.user_session.set("history", [])
-    cl.user_session.set("welcome_shown", True)
     await cl.Message(
         content=(
             f"**ShopAgent Lite** — E-Commerce Analytics\n\n"
@@ -467,20 +468,11 @@ async def main(message: cl.Message):
 
         called_tools.add(fn_name)
 
-        # Show which tool is being used (via cl.Step, hidden from UI by cot=hidden)
-        tool_label = {"query_ledger": "Consultando The Ledger (Postgres)",
-                      "search_memory": "Buscando The Memory (Qdrant)"}
-        step = cl.Step(name=tool_label.get(fn_name, fn_name), type="run")
-        await step.__aenter__()
-        step.output = "..."
-
+        # Execute tool (no cl.Step — it causes avatar spam)
         try:
             result = _exec_tool(fn_name, fn_args)
         except Exception as exc:
             result = f"Error: {exc}"
-
-        step.output = result[:300]
-        await step.__aexit__(None, None, None)
 
         if fn_name == "query_ledger":
             ledger_results.append(result)
