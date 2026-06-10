@@ -204,11 +204,12 @@ def _extract_state_from_msg(user_msg: str) -> str | None:
     for w in words:
         if w in states:
             return w
-    # Full name → abbreviation
+    # Full name or colloquial short name → abbreviation
     name_map = {"pernambuco":"PE","sao paulo":"SP","rio de janeiro":"RJ",
                 "minas gerais":"MG","bahia":"BA","parana":"PR","rio grande do sul":"RS",
                 "santa catarina":"SC","espirito santo":"ES","goias":"GO",
-                "maranhao":"MA","ceara":"CE","amazonas":"AM","para":"PA"}
+                "maranhao":"MA","ceara":"CE","amazonas":"AM","para":"PA",
+                "do rio":"RJ","minas":"MG","bahia":"BA","parana":"PR"}
     norm = _normalize(user_msg)
     for name, abbr in name_map.items():
         if name in norm:
@@ -252,7 +253,7 @@ def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_cha
                 user_msg=user_msg, line_chart=line_chart,
             )
 
-        # Multiple states: grouped line chart
+        # Multiple states: grouped line chart with legend below
         colors = ["#4f46e5", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
                   "#ec4899", "#06b6d4", "#f97316", "#6366f1", "#14b8a6"]
         fig = go.Figure()
@@ -265,10 +266,14 @@ def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_cha
                 line=dict(color=colors[i % len(colors)], width=2),
                 marker=dict(size=6),
             ))
-        fig.update_layout(**_bar_layout(
+        layout = _bar_layout(
             f"{y_key.replace('_', ' ').capitalize()} por Mes (por Estado)",
             "Mes", y_key.replace('_', ' ').capitalize(), is_currency,
-        ))
+        )
+        layout["legend"] = dict(orientation="h", yanchor="bottom", y=-0.35,
+                                xanchor="center", x=0.5, font=dict(size=11))
+        layout["margin"] = dict(l=60, r=30, t=50, b=90)
+        fig.update_layout(**layout)
         fig.update_xaxes(tickangle=-45)
         return fig
 
