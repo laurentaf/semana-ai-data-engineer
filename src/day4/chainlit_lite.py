@@ -196,6 +196,26 @@ def _bar_layout(title: str, x_title: str, y_title: str, is_currency: bool) -> di
     return layout
 
 
+def _extract_state_from_msg(user_msg: str) -> str | None:
+    """Extract a Brazilian state abbreviation from the user message."""
+    words = _normalize(user_msg).upper().split()
+    states = {"AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
+              "MG","PA","PB","PR","PE","PI","RJ","RN","RO","RR","RS","SC","SP","SE","TO"}
+    for w in words:
+        if w in states:
+            return w
+    # Full name → abbreviation
+    name_map = {"pernambuco":"PE","sao paulo":"SP","rio de janeiro":"RJ",
+                "minas gerais":"MG","bahia":"BA","parana":"PR","rio grande do sul":"RS",
+                "santa catarina":"SC","espirito santo":"ES","goias":"GO",
+                "maranhao":"MA","ceara":"CE","amazonas":"AM","para":"PA"}
+    norm = _normalize(user_msg)
+    for name, abbr in name_map.items():
+        if name in norm:
+            return abbr
+    return None
+
+
 def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_chart: bool = False):
     """Parse query_ledger result and build a Plotly Figure if data is chartable."""
     import plotly.graph_objects as go
@@ -215,6 +235,42 @@ def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_cha
     first = rows[0]
     y_key = _pick_y_key(first, user_msg)
     is_currency = y_key in ("faturamento", "ticket_medio")
+
+    # revenue_by_month_state: has both "state" AND "mes" — multi-line chart per state
+    if "state" in first and "mes" in first:
+        states_in_data = sorted(set(r["state"] for r in rows))
+        requested_state = _extract_state_from_msg(user_msg)
+
+        if requested_state and requested_state in states_in_data:
+            # Single state: filter rows, drop "state" key, plot as monthly
+            filtered = [{k: v for k, v in r.items() if k != "state"}
+                        for r in rows if r["state"] == requested_state]
+            if len(filtered) < 2:
+                return None
+            return _build_chart_from_tool_result(
+                f"[{json.dumps(filtered, ensure_ascii=False)}]",
+                user_msg=user_msg, line_chart=line_chart,
+            )
+
+        # Multiple states: grouped line chart
+        colors = ["#4f46e5", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
+                  "#ec4899", "#06b6d4", "#f97316", "#6366f1", "#14b8a6"]
+        fig = go.Figure()
+        for i, state in enumerate(states_in_data[:10]):
+            state_rows = [r for r in rows if r["state"] == state]
+            x = [_fmt_month(r["mes"]) for r in state_rows]
+            y = [float(r[y_key]) for r in state_rows]
+            fig.add_trace(go.Scatter(
+                x=x, y=y, mode="lines+markers", name=state,
+                line=dict(color=colors[i % len(colors)], width=2),
+                marker=dict(size=6),
+            ))
+        fig.update_layout(**_bar_layout(
+            f"{y_key.replace('_', ' ').capitalize()} por Mes (por Estado)",
+            "Mes", y_key.replace('_', ' ').capitalize(), is_currency,
+        ))
+        fig.update_xaxes(tickangle=-45)
+        return fig
 
     if "mes" in first:
         x = [_fmt_month(r["mes"]) for r in rows]
@@ -328,17 +384,20 @@ def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_cha
 
 
 async def _send_chart(ledger_results: list[str], wants_chart: bool, user_msg: str, line_chart: bool):
-    """Build and send Plotly chart if data is chartable."""
+    """Build and send Plotly chart if data is chartable. Never crashes the chat."""
     if not ledger_results:
         return
     last_result = ledger_results[-1]
     if wants_chart or _should_auto_chart(last_result):
-        fig = _build_chart_from_tool_result(last_result, user_msg=user_msg, line_chart=line_chart)
-        if fig:
-            await cl.Message(
-                content="",
-                elements=[cl.Plotly(name="chart", figure=fig, display="inline")],
-            ).send()
+        try:
+            fig = _build_chart_from_tool_result(last_result, user_msg=user_msg, line_chart=line_chart)
+            if fig:
+                await cl.Message(
+                    content="",
+                    elements=[cl.Plotly(name="chart", figure=fig, display="inline")],
+                ).send()
+        except Exception:
+            pass  # Chart error should never break the conversation
 
 
 async def _llm_create(client: OpenAI, max_retries: int = 3, **kwargs) -> object:
