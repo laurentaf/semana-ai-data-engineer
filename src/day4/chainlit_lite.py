@@ -248,7 +248,7 @@ def _build_chart_from_tool_result(tool_result: str, user_msg: str = "", line_cha
             if len(filtered) < 2:
                 return None
             return _build_chart_from_tool_result(
-                f"[{json.dumps(filtered, ensure_ascii=False)}]",
+                json.dumps(filtered, ensure_ascii=False),
                 user_msg=user_msg, line_chart=line_chart,
             )
 
