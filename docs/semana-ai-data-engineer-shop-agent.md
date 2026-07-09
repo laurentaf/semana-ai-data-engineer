@@ -14,7 +14,7 @@ Luan Moreno
 
 # **1\. Visão Geral**
 
-A Semana AI Data Engineer é um evento gratuito de 5 noites (13–17 Abril 2026, 20h–23h) que funciona como porta de entrada para a Formação AI Data Engineer. Em 4 noites práticas, os participantes constroem do zero o ShopAgent: um sistema multi-agent de IA conectado a dados reais de e-commerce, com interface conversacional.
+A Semana AI Data Engineer é um evento gratuito de 5 fases (13–17 Abril 2026, 20h–23h) que funciona como porta de entrada para a Formação AI Data Engineer. Em 4 fases práticas, os participantes constroem do zero o ShopAgent: um sistema multi-agent de IA conectado a dados reais de e-commerce, com interface conversacional.
 
 ## **Pergunta Central**
 
@@ -22,7 +22,7 @@ A Semana AI Data Engineer é um evento gratuito de 5 noites (13–17 Abril 2026,
 
 ## **O Projeto: ShopAgent**
 
-Um sistema multi-agent que analisa dados de e-commerce em tempo real, consulta tanto dados estruturados (SQL) quanto semânticos (vetores), e interage via chat. Construído incrementalmente ao longo de 4 noites.
+Um sistema multi-agent que analisa dados de e-commerce em tempo real, consulta tanto dados estruturados (SQL) quanto semânticos (vetores), e interage via chat. Construído incrementalmente ao longo de 4 fases.
 
 ## **Filosofia: Docker-First**
 
@@ -346,7 +346,7 @@ O aluno sai com o ShopAgent completo: multi-agent com CrewAI, interface conversa
 
 **22h00 – 22h30:** Pitch – Formação AI Data Engineer
 
-* Transição: “Vocês viram o que é possível em 4 noites. Imaginem 70 horas.”
+* Transição: “Vocês viram o que é possível em 4 fases. Imaginem 70 horas.”
 
 * A Formação: 4 Camadas (MindSet, Foundation, Workshops, Bootcamps)
 
@@ -407,7 +407,7 @@ Podcast ao vivo (1–2h) com convidados. Tom descontraído e inspirador.
 
 * Dia 4: o aluno já sabe o que quer. O pitch só confirma o caminho.
 
-* Frase-chave: “Em 4 noites vocês construíram o ShopAgent. Em 70 horas vocês dominam.”
+* Frase-chave: “Em 4 fases vocês construíram o ShopAgent. Em 70 horas vocês dominam.”
 
 **Oferta**
 

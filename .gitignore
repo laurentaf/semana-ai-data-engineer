@@ -67,3 +67,9 @@ yarn-error.log
 
 # Claude Code local project state
 .claude/projects/
+
+# Large media files (shared separately or via YouTube)
+*.mp4
+*.mov
+*.avi
+*.mkv

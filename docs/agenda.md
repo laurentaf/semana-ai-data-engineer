@@ -9,7 +9,7 @@ AIDE Brasil | Formacao AI Data Engineer | Luan Moreno
 
 ## Visao Geral
 
-Em 4 noites praticas + 1 podcast, os participantes constroem do zero o **ShopAgent**: um sistema multi-agent de IA para e-commerce que consulta dados estruturados (SQL) e semanticos (vetores), com interface conversacional e frontend profissional.
+Em 4 fases praticas + 1 podcast, os participantes constroem do zero o **ShopAgent**: um sistema multi-agent de IA para e-commerce que consulta dados estruturados (SQL) e semanticos (vetores), com interface conversacional e frontend profissional.
 
 **Pergunta Central:** *O que eu consigo fazer agora que nao conseguia antes?*
 
@@ -778,7 +778,7 @@ Claude Code > "Cria uma pagina de e-commerce para o ShopAgent.
 ```
 
 > **O impacto:** O participante ve o sistema inteiro -- dados, agentes, backend, frontend --
-> tudo gerado com IA. De zero a produto em 4 noites. "Isso e real?"
+> tudo gerado com IA. De zero a produto em 4 fases. "Isso e real?"
 
 #### Bloco 6: Grand Finale + Pitch (22h35 - 23h00)
 
@@ -801,13 +801,13 @@ O ShopAgent rodando end-to-end:
 | 3 | Agente autonomo + AgentSpec modo Deus |
 | 4 | Multi-agent + Frontend profissional + Cloud |
 
-> *"Em 4 noites voces construiram um sistema de Agentic Commerce completo.
+> *"Em 4 fases voces construiram um sistema de Agentic Commerce completo.
 > Com dados reais, agentes inteligentes, interface profissional, e tudo em cloud.
 > Voces provaram que conseguem. A Formacao e onde voces dominam."*
 
 **22h50 - 23h00: Pitch -- Formacao AI Data Engineer**
 
-- "Voces viram o que e possivel em 4 noites. Imaginem 70 horas."
+- "Voces viram o que e possivel em 4 fases. Imaginem 70 horas."
 - 4 Camadas: MindSet, Foundation, Workshops, Bootcamps
 - 16 modulos + 6 workshops + 4 bootcamps hands-on
 - AgentSpec completo: 58 agentes, 22 dominios, 29 comandos
@@ -906,7 +906,7 @@ O ShopAgent rodando end-to-end:
 | 3 | AgentSpec basico + LangChain + Chainlit | Workshops: AgentSpec completo (58 agentes, 22 dominios) |
 | 4 | CrewAI + DeepEval + LangFuse + Frontend | Bootcamps: Multi-Agent + LLMOps + Deploy prod |
 
-> *"Em 4 noites voces construiram o ShopAgent. Em 70 horas voces dominam."*
+> *"Em 4 fases voces construiram o ShopAgent. Em 70 horas voces dominam."*
 
 ---
 

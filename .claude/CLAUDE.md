@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Multi-agent e-commerce AI system built across 4 live nights (April 13-16, 2026) + 1 podcast.
+Multi-agent e-commerce AI system built across 4 live phases (April 13-16, 2026) + 1 podcast.
 Participants go from zero to a working ShopAgent: autonomous agents that query structured data (SQL)
 and semantic data (vectors), with a conversational interface and professional frontend.
 
