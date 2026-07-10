@@ -13,7 +13,7 @@ Em 4 fases praticas + 1 podcast, os participantes constroem do zero o **ShopAgen
 
 **Pergunta Central:** *O que eu consigo fazer agora que nao conseguia antes?*
 
-**Filosofia Docker-First:** Dias 1-3 rodam 100% local. Dia 4 migra para cloud -- mesma arquitetura, so muda o endpoint.
+**Filosofia Docker-First:** Fases 1-3 rodam 100% local. Fase 4 migra para cloud -- mesma arquitetura, so muda o endpoint.
 
 ---
 
@@ -39,7 +39,7 @@ Em 4 fases praticas + 1 podcast, os participantes constroem do zero o **ShopAgen
 
 ## Arco Narrativo
 
-| Dia | Tema | Emocao | O Participante Sai Com... |
+| Fase | Tema | Emocao | O Participante Sai Com... |
 |-----|------|--------|--------------------------|
 | 1 Seg | **INGERIR** | Curiosidade | Dados fluindo + Claude Code + Agentic Commerce |
 | 2 Ter | **CONTEXTUALIZAR** | Confianca | IA pesquisando nos SEUS dados (RAG + Ledger) |
@@ -50,10 +50,10 @@ Em 4 fases praticas + 1 podcast, os participantes constroem do zero o **ShopAgen
 ### Progressao de Autonomia
 
 ```
-Dia 1: EU FACO, IA AJUDA         (Claude Code assiste)
-Dia 2: IA BUSCA, EU PERGUNTO     (RAG + Ledger via MCP)
-Dia 3: IA PROJETA, EU VALIDO     (AgentSpec + Agent autonomo)
-Dia 4: IA CONSTROI, IA EXECUTA   (AgentSpec + CrewAI + Frontend)
+Fase 1: EU FACO, IA AJUDA         (Claude Code assiste)
+Fase 2: IA BUSCA, EU PERGUNTO     (RAG + Ledger via MCP)
+Fase 3: IA PROJETA, EU VALIDO     (AgentSpec + Agent autonomo)
+Fase 4: IA CONSTROI, IA EXECUTA   (AgentSpec + CrewAI + Frontend)
 ```
 
 ---
@@ -80,7 +80,7 @@ O ShopAgent nao e so um exercicio tecnico -- e um exemplo real do que o mercado 
 
 Agentic Commerce aparece como fio condutor em cada dia:
 
-| Dia | Conexao com Agentic Commerce |
+| Fase | Conexao com Agentic Commerce |
 |-----|------------------------------|
 | 1 | "O mercado esta mudando: $3-5 tri intermediados por agentes. Vamos construir um." |
 | 2 | "Pra um agente funcionar, precisa de dados exatos E compreensao. Isso e Ledger + RAG." |
@@ -95,9 +95,7 @@ Agentic Commerce aparece como fio condutor em cada dia:
 
 > *De "o que e isso?" para "tenho dados fluindo e entendo pra onde o mercado vai"*
 
-### Topicos do Dia
-
-1. **AI Data Engineering** -- numeros, cenario e realidade do mercado
+### Topicos da Fase 1. **AI Data Engineering** -- numeros, cenario e realidade do mercado
 2. **AI Coding Agents** -- o que sao, tipos, quando usar cada
 3. **Claude Code** -- deep dive: Claude & Claude Code
 4. **Configuration** -- MCPs, SubAgents, KBs (conceitual)
@@ -122,7 +120,7 @@ Agentic Commerce aparece como fio condutor em cada dia:
 | 20h25 | O que e Claude & Claude Code | Anthropic, modelos, como funciona |
 | 20h35 | Demo ao vivo | Claude Code explorando dados, gerando codigo |
 | 20h45 | Configuration | Conceito de MCPs, SubAgents, Knowledge Bases |
-| 20h55 | Preview | "Esses conceitos vao voltar nos Dias 2, 3 e 4 com forca total" |
+| 20h55 | Preview | "Esses conceitos vao voltar nas Fases 2, 3 e 4 com forca total" |
 
 #### Bloco 3: Agentic Commerce & ShopAgent (21h00 - 21h25)
 
@@ -226,9 +224,9 @@ order = Order(**raw_json)  # Validado!
 
 - Recap: "Voces tem dados reais fluindo e entendem pra onde o mercado vai"
 - Desafio: gerar 10.000 orders e explorar com Claude Code
-- Preview Dia 2: "Amanha a IA vai pesquisar nos SEUS dados"
+- Preview Fase 2: "Amanha a IA vai pesquisar nos SEUS dados"
 
-**Entrega do Dia:**
+**Entrega da Fase:**
 - [x] Docker rodando (ShadowTraffic + Postgres + Qdrant)
 - [x] Dados exatos no Postgres + reviews em JSONL
 - [x] Pydantic validando + Structured Outputs
@@ -242,9 +240,7 @@ order = Order(**raw_json)  # Validado!
 
 > *De "a IA inventa" para "a IA pesquisa nos MEUS dados e responde certo"*
 
-### Topicos do Dia
-
-1. **Prompt Engineering** -- o basico, e por que nao basta
+### Topicos da Fase 1. **Prompt Engineering** -- o basico, e por que nao basta
 2. **Context Engineering** -- a evolucao (Karpathy, 2026)
 3. **RAG vs Ledger** -- dois tipos de dado, dois stores
 4. **Ledger (Postgres)** -- dados exatos via SQL
@@ -253,7 +249,7 @@ order = Order(**raw_json)  # Validado!
 7. **MCP** -- conectar ambos os stores
 8. **Claude Code pesquisa** -- demo fim a fim
 
-### A Progressao do Dia
+### A Progressao da Fase
 
 ```
 PROMPT ENGINEERING          "Pergunto direto pro Claude"
@@ -315,7 +311,7 @@ Exemplo: "Pedidos por pix?" -> SELECT COUNT(*) FROM orders WHERE payment='pix'""
 
 | Horario | Atividade | Detalhes |
 |---------|-----------|---------|
-| 21h00 | Os dados ja estao la | ShadowTraffic do Dia 1 populou o Postgres |
+| 21h00 | Os dados ja estao la | ShadowTraffic da Fase 1 populou o Postgres |
 | 21h05 | MCP Supabase | Conectar MCP oficial ao Postgres local |
 | 21h15 | Demo | Claude Code: "Faturamento por estado?" -> SQL via MCP -> resultado |
 | 21h25 | Exercicio | Perguntas que so SQL resolve (agregacoes, JOINs) |
@@ -346,7 +342,7 @@ Claude Code > "Qual faturamento total por estado?"
 | Horario | Atividade | Detalhes |
 |---------|-----------|---------|
 | 21h30 | O que e RAG? | Buscar nos dados antes de responder |
-| 21h38 | LlamaIndex | SimpleDirectoryReader carrega reviews JSONL do Dia 1 |
+| 21h38 | LlamaIndex | SimpleDirectoryReader carrega reviews JSONL da Fase 1 |
 | 21h48 | Embeddings -> Qdrant | Chunks -> embeddings -> Qdrant (Docker local) |
 | 22h00 | MCP Qdrant | Conectar MCP oficial ao Qdrant |
 | 22h08 | Demo semantica | "Clientes reclamando de entrega?" -> 23 reviews |
@@ -362,7 +358,7 @@ client = qdrant_client.QdrantClient(url="http://localhost:6333")
 vector_store = QdrantVectorStore(client=client, collection_name="reviews")
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Reviews JSONL do Dia 1 -> embeddings -> Qdrant
+# Reviews JSONL da Fase 1 -> embeddings -> Qdrant
 documents = SimpleDirectoryReader("./data/reviews/").load_data()
 index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
 
@@ -399,9 +395,9 @@ Claude Code > "Resumo executivo"
 
 - Recap: "A IA agora pesquisa nos SEUS dados -- numeros exatos E significado"
 - Desafio: criar 5 perguntas hibridas e testar
-- Preview Dia 3: "Amanha o agente decide sozinho. E vamos entrar no modo Deus."
+- Preview Fase 3: "Amanha o agente decide sozinho. E vamos entrar no modo Deus."
 
-**Entrega do Dia:**
+**Entrega da Fase:**
 - [x] Prompt Eng -> Context Eng (evolucao entendida)
 - [x] Postgres populado + MCP Supabase conectado (Ledger)
 - [x] Qdrant indexado + MCP Qdrant conectado (Memory/RAG)
@@ -416,20 +412,18 @@ Claude Code > "Resumo executivo"
 
 > *De "eu decido" para "o agente decide" -- e o AgentSpec projeta tudo*
 
-### Topicos do Dia
-
-1. **Conceito de Agentes e Workflows** -- o que e um agente, como funciona
+### Topicos da Fase 1. **Conceito de Agentes e Workflows** -- o que e um agente, como funciona
 2. **Design Patterns** -- ReAct, Tool Use, routing, chain-of-thought
 3. **Spec-Driven Development & AgentSpec** -- modo Deus ativado
 4. **LangChain + Chainlit** -- agente autonomo com interface conversacional
 
-### O Salto do Dia 3
+### O Salto da Fase 3
 
 ```
-Dias 1-2: Usamos Claude Code no modo "normal"
+Fases 1-2: Usamos Claude Code no modo "normal"
           Plan Mode, perguntas diretas, codigo passo a passo
           
-Dia 3:    MODO DEUS
+Fase 3:    MODO DEUS
           AgentSpec ativa 58 agentes especializados
           /brainstorm -> /define -> /design -> /build
           "A IA projeta, eu valido"
@@ -442,7 +436,7 @@ Dia 3:    MODO DEUS
 | Horario | Atividade | Detalhes |
 |---------|-----------|---------|
 | 20h00 | O que e um Agent? | Diferenca: tool vs agent vs workflow |
-| 20h10 | Autonomia | "No Dia 2 VOCES decidiram. Hoje o AGENTE decide." |
+| 20h10 | Autonomia | "Na Fase 2 VOCES decidiram. Hoje o AGENTE decide." |
 | 20h18 | Componentes | Perception -> Reasoning -> Action -> Memory |
 | 20h25 | Tipos de workflow | Sequential, parallel, hierarchical, consensus |
 
@@ -486,11 +480,11 @@ Agent (ReAct):
 
 **O momento "modo Deus":**
 ```bash
-# Ate agora (Dias 1-2): Plan Mode, manual
+# Ate agora (Fases 1-2): Plan Mode, manual
 Claude Code > "Cria um agente que consulta Supabase e Qdrant"
 # -> Claude gera codigo passo a passo, voce vai ajustando
 
-# Agora (Dia 3): AgentSpec
+# Agora (Fase 3): AgentSpec
 /agentspec:brainstorm "ShopAgent: agente e-commerce com Qdrant + Supabase via MCP"
 
   [58 agentes especializados ativados]
@@ -559,9 +553,9 @@ async def on_message(message: cl.Message):
 #### Bloco 5: Encerramento (22h40 - 23h00)
 
 - Recap: "Voces viram o agente decidir sozinho E o AgentSpec projetar tudo"
-- Preview Dia 4: "Amanha: um TIME de agentes, frontend profissional, cloud, e o grand finale"
+- Preview Fase 4: "Amanha: um TIME de agentes, frontend profissional, cloud, e o grand finale"
 
-**Entrega do Dia:**
+**Entrega da Fase:**
 - [x] Conceito de agentes e design patterns dominado
 - [x] AgentSpec: brainstorm -> define -> design -> build
 - [x] LangChain agent decidindo autonomamente qual store usar
@@ -575,9 +569,7 @@ async def on_message(message: cl.Message):
 
 > *De "um agente" para "um time de agentes com frontend profissional em cloud"*
 
-### Topicos do Dia
-
-1. **Conceito de Multi-Agent e Agentic** -- por que especializar
+### Topicos da Fase 1. **Conceito de Multi-Agent e Agentic** -- por que especializar
 2. **Design Patterns Multi-Agent** -- sequential, hierarchical, delegation
 3. **AgentSpec construindo tudo** -- /build + /ship do sistema completo
 4. **CrewAI + Chainlit** -- 3 agentes + interface conversacional
@@ -693,11 +685,11 @@ class ShopAgentCrew:
 
 ```python
 # Cloud: so muda a URL
-# Docker local (Dias 1-3)
+# Docker local (Fases 1-3)
 SUPABASE_URL = "http://localhost:54321"
 QDRANT_URL = "http://localhost:6333"
 
-# Cloud (Dia 4) -- mesma arquitetura!
+# Cloud (Fase 4) -- mesma arquitetura!
 SUPABASE_URL = "https://xxxxx.supabase.co"
 QDRANT_URL = "https://xxxxx.cloud.qdrant.io:6333"
 ```
@@ -794,7 +786,7 @@ O ShopAgent rodando end-to-end:
 
 **22h45 - 22h50: Recapitulacao da Semana**
 
-| Dia | O que construimos |
+| Fase | O que construimos |
 |-----|-------------------|
 | 1 | Dados reais + Agentic Commerce + Claude Code |
 | 2 | IA pesquisando nos dados (RAG + Ledger + MCP) |
@@ -816,7 +808,7 @@ O ShopAgent rodando end-to-end:
 
 **23h00: Q&A + Fechamento**
 
-**Entrega do Dia:**
+**Entrega da Fase:**
 - [x] Multi-agent CrewAI com 3 agentes especializados
 - [x] AgentSpec /build + /ship completo
 - [x] DeepEval avaliando qualidade
@@ -880,15 +872,15 @@ O ShopAgent rodando end-to-end:
             | status     |        +------------+
             | payment    |     ShadowTraffic
             +------------+       -> JSONL
-          ShadowTraffic          -> Qdrant (Dia 2)
+          ShadowTraffic          -> Qdrant (Fase 2)
             -> Postgres
 ```
 
 ---
 
-## Progressao de Stack por Dia
+## Progressao de Stack por Fase
 
-| Dia | Stack Nova | Stack Acumulada |
+| Fase | Stack Nova | Stack Acumulada |
 |-----|-----------|-----------------|
 | 1 | ShadowTraffic, Pydantic, Claude Code, Docker | ShadowTraffic, Pydantic, Claude Code, Docker |
 | 2 | LlamaIndex, Qdrant, Postgres, MCP, Context Eng | + LlamaIndex, Qdrant, MCP |
@@ -899,7 +891,7 @@ O ShopAgent rodando end-to-end:
 
 ## Conexao Semana <-> Formacao
 
-| Dia | Semana (Intro -- 20%) | Formacao (Dominio -- 100%) |
+| Fase | Semana (Intro -- 20%) | Formacao (Dominio -- 100%) |
 |-----|----------------------|---------------------------|
 | 1 | ShadowTraffic + Pydantic + Claude Code | Foundation: 16 modulos + 4 AI Coding Agents |
 | 2 | Context Eng + RAG + Ledger + MCP | Workshops: RAG production-ready + MCP avancado |
@@ -914,8 +906,8 @@ O ShopAgent rodando end-to-end:
 
 | Metrica | Meta | Como Medir |
 |---------|------|------------|
-| Audiencia Dia 1 | 1.000+ ao vivo | Plataforma de live |
-| Retencao Dia 1->4 | > 40% | Audiencia Dia 4 / Dia 1 |
+| Audiencia Fase 1 | 1.000+ ao vivo | Plataforma de live |
+| Retencao Fase 1->4 | > 40% | Audiencia Fase 4 / Fase 1 |
 | Engajamento Chat | > 300 msgs/noite | Chat da live |
 | ShopAgent Completo | > 30% constroem | Formulario pos-evento |
 | Conversao Formacao | > 5% audiencia | Vendas durante/apos |
@@ -927,14 +919,14 @@ O ShopAgent rodando end-to-end:
 | Quando | Acao |
 |--------|------|
 | 4 sem antes (16/Mar) | docker-compose.yml + configs ShadowTraffic + repo ShopAgent + AgentSpec testado |
-| 3 sem antes (23/Mar) | Dry run Dia 1-2 + LlamaIndex pipeline + MCP Supabase/Qdrant |
-| 2 sem antes (30/Mar) | Dry run Dia 3-4 + AgentSpec flow + CrewAI + Impeccable + pitch pronto |
+| 3 sem antes (23/Mar) | Dry run Fase 1-2 + LlamaIndex pipeline + MCP Supabase/Qdrant |
+| 2 sem antes (30/Mar) | Dry run Fase 3-4 + AgentSpec flow + CrewAI + Impeccable + pitch pronto |
 | 1 sem antes (06/Abr) | Divulgacao + teste end-to-end + convidados podcast + Cloud setup |
 | Semana evento (13/Abr) | Executar! + metricas + ajustar pitch baseado no engajamento |
 
 ---
 
-## Docker Compose (Dias 1-3)
+## Docker Compose (Fases 1-3)
 
 ```yaml
 services:

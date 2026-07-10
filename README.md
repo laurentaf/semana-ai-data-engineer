@@ -74,7 +74,7 @@
 ---
 
 > **O que você consegue fazer agora que não conseguia antes?**  
-> ShopAgent é um sistema multi-agente autônomo construído sobre dados reais de e-commerce. Ele roteia perguntas de negócio para o armazenamento certo: SQL para números exatos, vetores para sentimento do cliente. Dias 1-3 rodam 100% local com Docker. Dia 4 migra a mesma arquitetura para a nuvem.
+> ShopAgent é um sistema multi-agente autônomo construído sobre dados reais de e-commerce. Ele roteia perguntas de negócio para o armazenamento certo: SQL para números exatos, vetores para sentimento do cliente. Fases 1-3 rodam 100% local com Docker. Fase 4 migra a mesma arquitetura para a nuvem.
 
 ---
 
@@ -151,7 +151,7 @@ flowchart LR
 
 ## Jornada: 4 Fases
 
-| Dia | Tema | Stack |
+| Fase | Tema | Stack |
 |-----|------|-------|
 | **1** 🗓️ | **INGERIR** — Dados, pipeline, schema | ShadowTraffic, Pydantic, Docker |
 | **2** 🗓️ | **CONTEXTUALIZAR** — Embeddings + busca semântica | FastEmbed, Qdrant, Postgres, MCP |
@@ -175,7 +175,7 @@ flowchart LR
 
 ---
 
-## 3-Agent Crew (Dia 4)
+## 3-Agent Crew (Fase 4)
 
 | Agent | Função | Fonte de Dados | LLM |
 |-------|--------|----------------|-----|
@@ -193,7 +193,7 @@ flowchart LR
 - Chave API Anthropic
 - Licença ShadowTraffic (trial gratuito em [shadowtraffic.io](https://shadowtraffic.io/))
 
-### Modo Local (Dias 1-3)
+### Modo Local (Fases 1-3)
 
 ```bash
 git clone https://github.com/laurentaf/semana-ai-data-engineer.git
@@ -217,7 +217,7 @@ docker compose up -d
 # → Postgres na 5432, Qdrant na 6333, ShadowTraffic gerando dados
 ```
 
-### Modo Cloud (Dia 4)
+### Modo Cloud (Fase 4)
 
 ```bash
 # 1. Definir ENVIRONMENT=cloud no .env

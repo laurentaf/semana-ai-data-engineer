@@ -7,7 +7,7 @@ De Zero a Agente Autônomo
 
 Multi-Agent de IA para E-Commerce com CrewAI \+ Supabase \+ Qdrant
 
-**100% Docker Local (Dias 1–3)  |  Serviços Gerenciados (Dia 4\)**
+**100% Docker Local (Fases 1-3)  |  Serviços Gerenciados (Fase 4\)**
 
 AIDE Brasil  |  Formação AI Data Engineer 2026  
 Luan Moreno
@@ -26,7 +26,7 @@ Um sistema multi-agent que analisa dados de e-commerce em tempo real, consulta t
 
 ## **Filosofia: Docker-First**
 
-Dias 1 a 3 rodam 100% em Docker local. No Dia 4, migramos para serviços gerenciados (Supabase \+ Qdrant Cloud), mostrando que a arquitetura é a mesma – só muda o endpoint. Isso ensina portabilidade real.
+Fases 1 a 3 rodam 100% em Docker local. Na Fase 4, migramos para serviços gerenciados (Supabase \+ Qdrant Cloud), mostrando que a arquitetura é a mesma – só muda o endpoint. Isso ensina portabilidade real.
 
 \# docker-compose.yml da Semanaservices:  shadowtraffic:   \# Gera dados e-commerce  postgres:        \# The Ledger (dados estruturados)  qdrant:          \# The Memory (dados semânticos)  fastapi-mock:    \# API de estoque (fonte externa)
 
@@ -34,7 +34,7 @@ Dias 1 a 3 rodam 100% em Docker local. No Dia 4, migramos para serviços gerenci
 
 Cada ferramenta tem um papel claro e aparece no dia certo, criando uma progressão natural de complexidade.
 
-| Camada | Ferramenta | Função | Dia |
+| Camada | Ferramenta | Função | Fase |
 | ----- | ----- | ----- | ----- |
 | Data Generation | ShadowTraffic | Gerar dados e-commerce (JSONL, Postgres) | 1 – 4 |
 | Fontes Externas | CSV \+ FastAPI Mock | Catálogo de produtos \+ API de estoque | 1 |
@@ -50,12 +50,12 @@ Cada ferramenta tem um papel claro e aparece no dia certo, criando uma progress�
 | Observabilidade | LangFuse | LLMOps / AgentOps – traces do agente | 4 |
 | Evals | DeepEval | Testar qualidade das respostas do agente | 3 – 4 |
 | Spec-Driven | PRD.md, CLAUDE.md | Contexto persistente para AI Coding | 1 |
-| Infra | Docker Compose | Tudo local nos Dias 1–3 | 1 – 3 |
-| Cloud (Dia 4\) | Supabase \+ Qdrant Cloud | Migração para serviços gerenciados | 4 |
+| Infra | Docker Compose | Tudo local nas Fases 1-3 | 1 – 3 |
+| Cloud (Fase 4\) | Supabase \+ Qdrant Cloud | Migração para serviços gerenciados | 4 |
 
 # **3\. Arco Narrativo da Semana**
 
-| Dia | Tema | Emoção | Entrega | Stack Nova |
+| Fase | Tema | Emoção | Entrega | Stack Nova |
 | ----- | ----- | ----- | ----- | ----- |
 | 1 Seg | INGERIR | Curiosidade | Pipeline de ingestão rodando | ShadowTraffic, Pydantic, Claude Code |
 | 2 Ter | CONTEXTUALIZAR | Confiança | IA respondendo sobre seus dados | LlamaIndex, Qdrant |
@@ -71,7 +71,7 @@ Serviço containerizado (Docker) que gera dados declarativamente via JSON. Zero 
 
 **4 Entidades \+ 2 Fontes Externas**
 
-| Entidade | Campos Principais | Fonte | Destino | Dia |
+| Entidade | Campos Principais | Fonte | Destino | Fase |
 | ----- | ----- | ----- | ----- | ----- |
 | customers | customer\_id, name, email, city, state, segment | ShadowTraffic | Postgres \+ JSONL | 1 |
 | products | product\_id, name, category, price, brand, stock | CSV estático | Postgres | 1 |
@@ -190,7 +190,7 @@ O aluno sai sabendo construir contexto rico para IA e implementando RAG com Llam
 
 * System Prompts efetivos: persona do ShopAgent
 
-* Few-Shot com dados reais de e-commerce (orders do Dia 1\)
+* Few-Shot com dados reais de e-commerce (orders da Fase 1\)
 
 * Schema como contexto: passar Pydantic models para IA entender estrutura
 
@@ -202,7 +202,7 @@ O aluno sai sabendo construir contexto rico para IA e implementando RAG com Llam
 
 * O que é RAG e por que o Data Engineer precisa entender
 
-* LlamaIndex: SimpleDirectoryReader carrega JSONLs do Dia 1
+* LlamaIndex: SimpleDirectoryReader carrega JSONLs da Fase 1
 
 * Embeddings → Qdrant (rodando local no Docker)
 
@@ -246,7 +246,7 @@ O aluno sai com o ShopAgent conectado via MCP a duas fontes complementares: Supa
 
 **Bloco 2: The Ledger – Supabase via MCP (20h30 – 21h30)**
 
-* Migrando dados do Dia 1 para Postgres estruturado:
+* Migrando dados da Fase 1 para Postgres estruturado:
 
   * customers \+ products \+ orders em tabelas com schemas definidos
 
@@ -262,7 +262,7 @@ O aluno sai com o ShopAgent conectado via MCP a duas fontes complementares: Supa
 
 **Bloco 3: The Memory – Qdrant via MCP (21h30 – 22h15)**
 
-* Reviews do Dia 2 já no Qdrant – agora conectando via MCP oficial do Qdrant
+* Reviews da Fase 2 já no Qdrant – agora conectando via MCP oficial do Qdrant
 
 * Demo: “Quais clientes reclamam de frete?” → busca semântica → resposta contextual
 
@@ -316,7 +316,7 @@ O aluno sai com o ShopAgent completo: multi-agent com CrewAI, interface conversa
 
   * Mensagem: “A arquitetura é a mesma, só o endpoint muda”
 
-* Implementando CrewAI com os 3 agentes \+ tools do Dia 3
+* Implementando CrewAI com os 3 agentes \+ tools da Fase 3
 
 * Conectando Chainlit como interface conversacional:
 
@@ -334,13 +334,13 @@ O aluno sai com o ShopAgent completo: multi-agent com CrewAI, interface conversa
 
 **21h30 – 22h00:** Recapitulação da Jornada Completa
 
-* Dia 1: Vocês geraram dados reais e tiparam com Pydantic
+* Fase 1: Vocês geraram dados reais e tiparam com Pydantic
 
-* Dia 2: Vocês fizeram IA responder com precisão (Context Engineering \+ RAG)
+* Fase 2: Vocês fizeram IA responder com precisão (Context Engineering \+ RAG)
 
-* Dia 3: Vocês deram duas pernas ao agente: SQL exato \+ semântica (MCP)
+* Fase 3: Vocês deram duas pernas ao agente: SQL exato \+ semântica (MCP)
 
-* Dia 4: Vocês construíram um time de agentes com interface profissional
+* Fase 4: Vocês construíram um time de agentes com interface profissional
 
 *“Nesta semana vocês provaram que conseguem. A Formação é onde vocês dominam.”*
 
@@ -394,7 +394,7 @@ Podcast ao vivo (1–2h) com convidados. Tom descontraído e inspirador.
 
 # **6\. Conexão Semana ↔ Formação**
 
-| Dia | Semana (Intro – 20%) | Formação (Domínio – 100%) |
+| Fase | Semana (Intro – 20%) | Formação (Domínio – 100%) |
 | ----- | ----- | ----- |
 | 1 | ShadowTraffic \+ Pydantic \+ Claude Code | Foundation: 16 módulos \+ 4 AI Coding Agents completos |
 | 2 | Context Engineering \+ RAG básico \+ Qdrant | Workshops: Context Eng avançado \+ RAG production-ready |
@@ -405,7 +405,7 @@ Podcast ao vivo (1–2h) com convidados. Tom descontraído e inspirador.
 
 * A semana inteira é prova de conceito. Cada noite mostra 20% do que a Formação cobre.
 
-* Dia 4: o aluno já sabe o que quer. O pitch só confirma o caminho.
+* Fase 4: o aluno já sabe o que quer. O pitch só confirma o caminho.
 
 * Frase-chave: “Em 4 fases vocês construíram o ShopAgent. Em 70 horas vocês dominam.”
 
@@ -423,8 +423,8 @@ Podcast ao vivo (1–2h) com convidados. Tom descontraído e inspirador.
 
 | Métrica | Meta | Como Medir |
 | ----- | ----- | ----- |
-| Audiência Dia 1 | 1.000+ ao vivo | Plataforma de live |
-| Retenção Dia 1→4 | \> 40% | Audiência Dia 4 / Dia 1 |
+| Audiência Fase 1 | 1.000+ ao vivo | Plataforma de live |
+| Retenção Fase 1→4 | \> 40% | Audiência Fase 4 / Fase 1 |
 | Engajamento Chat | \> 300 msgs/noite | Chat da live |
 | ShopAgent Completo | \> 30% constroem | Formulário pós-evento |
 | Conversão Formação | \> 5% audiência | Vendas durante/após |
@@ -434,8 +434,8 @@ Podcast ao vivo (1–2h) com convidados. Tom descontraído e inspirador.
 | Quando | Ação |
 | ----- | ----- |
 | 4 sem antes | docker-compose.yml pronto \+ configs ShadowTraffic \+ CSV \+ API mock \+ repo ShopAgent |
-| 3 sem antes | Dry run Dia 1–2 \+ LlamaIndex pipeline testado \+ Qdrant indexado |
-| 2 sem antes | Dry run Dia 3–4 \+ CrewAI \+ Chainlit \+ pitch pronto \+ página vendas |
+| 3 sem antes | Dry run Fase 1–2 \+ LlamaIndex pipeline testado \+ Qdrant indexado |
+| 2 sem antes | Dry run Fase 3–4 \+ CrewAI \+ Chainlit \+ pitch pronto \+ página vendas |
 | 1 sem antes | Divulgação pesada \+ teste end-to-end \+ convidar podcast \+ Supabase/Qdrant Cloud setup |
 | Semana evento | Executar\! \+ métricas \+ ajustar pitch baseado no engajamento |
 
