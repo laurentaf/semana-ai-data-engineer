@@ -67,7 +67,7 @@
 > The GIF preview lives in `docs/video-preview.gif`.
 > To regenerate the GIF from the source MP4:
 > ```bash
-> ffmpeg -i video_ai_engineer.mp4 -vf "setpts=PTS/6.22,scale=720:-1:flags=lanczos" -r 20 -loop 0 docs/video-preview.gif
+> ffmpeg -i video_ai_engineer.mp4 -vf "setpts=PTS/6.22,scale=720:-1:flags=lanczos" -r 30 -loop 0 docs/video-preview.gif
 > ```
 > *(Adjust `PTS/6.22` ratio if video duration changes)*
 
