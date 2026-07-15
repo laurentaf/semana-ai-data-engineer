@@ -16,16 +16,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from day3.tools import CHART_DIR, qdrant_semantic_search, render_plotly_chart
+from day4.cloud_tools import query_ledger, search_memory
+from day3.tools import CHART_DIR, render_plotly_chart
 
 ENV_MODE = os.environ.get("ENVIRONMENT", "local")
-_is_cloud = ENV_MODE == "cloud"
-
-if _is_cloud:
-    from day4.cloud_tools import query_ledger, search_memory
-    execute_sql = query_ledger
-else:
-    from day3.tools import execute_sql
 OPENCODE_GO_KEY = os.environ.get("OPENCODE_GO_API_KEY", os.environ.get("OPENCODE_API_KEY", ""))
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-v4-flash")
 
@@ -95,13 +89,8 @@ def _get_lf_config(session_id: str, user_id: str = "anonymous") -> dict:
 async def start():
     llm = _get_llm()
     from langchain_core.tools import tool as _mk_tool
-    tools = [render_plotly_chart]
-    if _is_cloud:
-        from day4.cloud_tools import query_ledger as _qld, search_memory as _sm
-        tools.extend([_mk_tool(_qld), _mk_tool(_sm)])
-    else:
-        from day3.tools import execute_sql, qdrant_semantic_search
-        tools.extend([execute_sql, qdrant_semantic_search])
+    from day3.tools import qdrant_semantic_search
+    tools = [render_plotly_chart, _mk_tool(query_ledger), _mk_tool(search_memory), qdrant_semantic_search]
 
     agent = create_react_agent(
         model=llm,
