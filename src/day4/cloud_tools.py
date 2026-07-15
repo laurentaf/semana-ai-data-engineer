@@ -40,22 +40,32 @@ NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 NIM_MODEL = os.environ.get("NIM_LEDGER_MODEL", "meta/llama-3.1-70b-instruct")
 NIM_ROUTER_MODEL = os.environ.get("NIM_ROUTER_MODEL", "nvidia/nemotron-mini-4b-instruct")
-NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
+NIM_EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/llama-nemotron-embed-1b-v2")
 
-ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta, escolha a query SQL mais apropriada.
+ROUTER_SYSTEM = """Voce e o ShopAgent query router. Dada uma pergunta do usuario, escolha a query SQL mais apropriada.
 
-Queries disponiveis: revenue_by_state, orders_by_status, top_products,
-payment_distribution, segment_analysis, revenue_by_category,
-customer_count_by_state, orders_by_month, revenue_by_month,
-revenue_by_month_state, satisfaction_by_region
+Queries disponiveis:
+- revenue_by_month_state: faturamento, pedidos e ticket_medio agrupados por estado E mes. Use quando a pergunta menciona um estado + periodo temporal (mes, evolucao, mes a mes, etc.)
+- revenue_by_month: faturamento, pedidos e ticket_medio por mes (geral, sem estado). Use para evolucao temporal sem estado especifico.
+- revenue_by_state: faturamento e pedidos por estado (visao geral, sem temporal). Use para comparar estados.
+- orders_by_status: pedidos por status (entregue, cancelado, processando, enviado).
+- top_products: top 10 produtos por faturamento.
+- payment_distribution: pedidos por forma de pagamento (pix, cartao, boleto).
+- segment_analysis: clientes, pedidos e ticket_medio por segmento (premium, standard, basic).
+- revenue_by_category: faturamento e ticket_medio por categoria de produto.
+- customer_count_by_state: quantidade de clientes por estado.
+- satisfaction_by_region: faturamento e ticket_medio por estado e segmento.
+- premium_southeast_ticket: ticket_medio de clientes premium no sudeste (SP, RJ, MG, ES).
+- cross_store_review_join: ticket_medio, pedidos e faturamento por estado APENAS para pedidos que vieram de reviews do Qdrant. Use quando o usuario pergunta sobre ticket/reclamacao/regiao, combinando resultado do search_memory com o banco SQL.
 
 REGRAS:
-- Se a pergunta menciona "evolucao" OU "temporal" + um estado (PE, SP, etc), use revenue_by_month_state
-- Se a pergunta menciona "evolucao" OU "temporal" sem estado, use revenue_by_month
-- Se a pergunta menciona "faturamento" + "por estado" sem "evolucao", use revenue_by_state
-- Se a pergunta menciona "satisfacao" + "regiao", use satisfaction_by_region
+- Se menciona estado (sigla ou nome) + mes/evolucao/mensal/temporal, use revenue_by_month_state
+- Se menciona evolucao/temporal sem estado, use revenue_by_month
+- Se menciona estado sem temporal, use revenue_by_state
+- "vendas" e "faturamento" sao sinonimos
+- Se a pergunta menciona AO MESMO TEMPO opiniao/reclamacao (Qdrant) E dados numericos (faturamento/ticket), use cross_store_review_join
 
-Responda APENAS com o nome da query, nada mais. Sem explicacao."""
+Responda APENAS com o nome da query, nada mais."""
 
 
 def _normalize(text: str) -> str:
@@ -65,7 +75,7 @@ def _normalize(text: str) -> str:
 
 SAFE_QUERIES: dict[str, dict] = {
     "revenue_by_state": {
-        "keywords": ["faturamento por estado", "receita por estado", "revenue by state", "faturamento estado", "uf", "total por estado"],
+        "keywords": ["faturamento por estado", "receita por estado", "revenue by state", "vendas por estado"],
         "sql": """
 SELECT c.state, COUNT(o.order_id) AS pedidos, SUM(o.total) AS faturamento
 FROM orders o JOIN customers c ON o.customer_id = c.customer_id
@@ -73,7 +83,7 @@ GROUP BY c.state ORDER BY faturamento DESC
 """,
     },
     "orders_by_status": {
-        "keywords": ["status", "pedidos", "entregue", "cancelado", "processando", "enviado"],
+        "keywords": ["pedidos por status", "status do pedido", "entregue cancelado", "pedido entregue"],
         "sql": """
 SELECT status, COUNT(*) AS total, SUM(total) AS faturamento,
 ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS pct
@@ -127,7 +137,7 @@ GROUP BY c.segment, c.state ORDER BY ticket_medio DESC
 """,
     },
     "revenue_by_month": {
-        "keywords": ["evolucao geral", "mes a mes", "month", "temporal", "timeline", "periodo", "trimestre", "receita mes", "faturamento por mes", "faturamento mensal", "grafico faturamento", "grafico mensal"],
+        "keywords": ["faturamento por mes", "faturamento mensal", "vendas por mes", "evolucao geral"],
         "sql": """
 SELECT TO_CHAR(created_at, 'YYYY-MM') AS mes, COUNT(*) AS pedidos,
 SUM(total) AS faturamento, ROUND(AVG(total), 2) AS ticket_medio
@@ -135,11 +145,7 @@ FROM orders GROUP BY mes ORDER BY mes ASC LIMIT 12
 """,
     },
     "revenue_by_month_state": {
-        "keywords": ["evolucao estado", "evolucao pernambuco", "evolucao sp", "evolucao rj",
-                     "evolucao mg", "evolucao pr", "evolucao ba", "evolucao rs", "evolucao sc",
-                     "evolucao pe", "vendas por mes estado", "faturamento mes estado",
-                     "vendas estado mes", "temporal estado", "mes a mes estado",
-                     "evolucao das vendas", "evolucao faturamento"],
+        "keywords": ["vendas por mes estado", "faturamento mes estado", "evolucao estado"],
         "sql": """
 SELECT c.state, TO_CHAR(o.created_at, 'YYYY-MM') AS mes, COUNT(o.order_id) AS pedidos,
 SUM(o.total) AS faturamento, ROUND(AVG(o.total), 2) AS ticket_medio
@@ -157,10 +163,24 @@ GROUP BY c.state, c.segment ORDER BY c.state, faturamento DESC
 """,
     },
     "customer_count_by_state": {
-        "keywords": ["quantos clientes", "cliente por estado", "clientes"],
+        "keywords": ["quantos clientes por estado", "clientes por estado"],
         "sql": """
 SELECT state, COUNT(*) AS clientes
 FROM customers GROUP BY state ORDER BY clientes DESC
+""",
+    },
+    "cross_store_review_join": {
+        "keywords": ["reclamacao", "reclama", "nordeste", "ticket medio", "atraso", "review join"],
+        "sql": """
+SELECT c.state,
+       COUNT(DISTINCT o.order_id) AS pedidos,
+       ROUND(AVG(o.total), 2) AS ticket_medio,
+       SUM(o.total) AS faturamento
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+WHERE o.order_id = ANY(%(order_ids)s::uuid[])
+GROUP BY c.state
+ORDER BY ticket_medio DESC
 """,
     },
 }
@@ -169,6 +189,7 @@ VALID_QUERIES = set(SAFE_QUERIES.keys())
 
 
 def _match_query(question: str) -> str | None:
+    """Keyword-based fallback for when NIM router is unavailable."""
     question_norm = _normalize(question)
     best_match = None
     best_score = 0
@@ -204,10 +225,12 @@ def _nim_route(question: str) -> str | None:
 
 
 def _route_query(question: str) -> str | None:
-    matched = _match_query(question)
-    if matched:
-        return matched
-    return _nim_route(question)
+    # Prefer LLM router — it understands natural language.
+    # Fall back to keyword matching only if NIM is unavailable.
+    nim_result = _nim_route(question)
+    if nim_result:
+        return nim_result
+    return _match_query(question)
 
 
 def _get_postgres_connection():
@@ -229,12 +252,25 @@ def _get_postgres_connection():
 
 
 def _exec_query_rpc(query_key: str) -> str | None:
-    sb = _get_sb_rest_client()
-    if sb is None:
+    import requests as _req
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    anon_key = os.environ.get("SUPABASE_KEY", "")
+    if not supabase_url or not anon_key:
         return None
     try:
-        resp = sb.rpc("exec_shopagent_query", {"query_name": query_key}).execute()
-        return json.dumps(resp.data, ensure_ascii=False, indent=2)
+        resp = _req.post(
+            f"{supabase_url}/rest/v1/rpc/exec_shopagent_query",
+            json={"query_name": query_key},
+            headers={
+                "apikey": anon_key,
+                "Authorization": f"Bearer {anon_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return json.dumps(resp.json(), ensure_ascii=False, indent=2)
+        return None
     except Exception:
         return None
 
@@ -254,8 +290,14 @@ def _get_qdrant_api_key() -> str | None:
 
 
 def _get_embedding(text: str) -> list[float]:
+    try:
+        from fastembed import TextEmbedding
+        model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5", providers=["CPUExecutionProvider"])
+        return list(model.embed(text))[0].tolist()
+    except ImportError:
+        pass
     if not NIM_API_KEY:
-        raise RuntimeError("NVIDIA_NIM_API_KEY required for embedding")
+        raise RuntimeError("NVIDIA_NIM_API_KEY required for embedding (or install fastembed)")
     client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY)
     resp = client.embeddings.create(
         model=NIM_EMBED_MODEL,
@@ -267,7 +309,7 @@ def _get_embedding(text: str) -> list[float]:
 
 # --- Public tool functions ---
 
-def query_ledger(question: str) -> str:
+def query_ledger(question: str, memory_context: str | None = None) -> str:
     """Query Postgres (The Ledger) for exact business data.
 
     Use when the question asks for specific numbers, totals, or structured data:
@@ -277,12 +319,21 @@ def query_ledger(question: str) -> str:
 
     Args:
         question: Natural language question about business metrics.
+        memory_context: Optional raw output from search_memory for cross-store queries.
     """
     matched = _route_query(question)
     if not matched:
         return f"Nao foi possivel mapear a pergunta. Queries disponiveis: {list(SAFE_QUERIES.keys())}"
 
     sql = SAFE_QUERIES[matched]["sql"]
+
+    order_ids = []
+    if memory_context and matched == "cross_store_review_join":
+        import re as _re
+        for m in _re.finditer(r'"order_id":\s*"([^"]+)"', memory_context):
+            oid = m.group(1)
+            if oid and oid not in order_ids:
+                order_ids.append(oid)
 
     try:
         conn = _get_postgres_connection()
@@ -295,7 +346,12 @@ def query_ledger(question: str) -> str:
 
     try:
         with conn.cursor() as cur:
-            cur.execute(sql)
+            params = {}
+            if order_ids:
+                params["order_ids"] = order_ids
+                cur.execute(sql, params)
+            else:
+                cur.execute(sql)
             columns = [desc[0] for desc in cur.description]
             rows = cur.fetchall()
     except psycopg2.Error as exc:
@@ -338,7 +394,7 @@ def search_memory(question: str) -> str:
         api_key = _get_qdrant_api_key()
         collection_name = os.environ.get("QDRANT_COLLECTION", "shopagent_reviews")
 
-        client_kwargs: dict = {"url": qdrant_url}
+        client_kwargs: dict = {"url": qdrant_url, "prefer_grpc": False}
         if api_key:
             client_kwargs["api_key"] = api_key
         client = qdrant_client.QdrantClient(**client_kwargs)
@@ -413,6 +469,10 @@ def get_tools_definitions() -> list[dict]:
                         "question": {
                             "type": "string",
                             "description": "Natural language question about business metrics (e.g. 'faturamento por estado', 'evolucao do faturamento mensal')",
+                        },
+                        "memory_context": {
+                            "type": "string",
+                            "description": "Optional raw output from a previous search_memory call. The system will extract order_ids from it to use in the query. Pass this when the user asks to combine review data with business metrics.",
                         },
                     },
                     "required": ["question"],
